@@ -340,13 +340,14 @@ export default function EditNote() {
                         {checklistItems.length > 0 && (
                             <div className="space-y-1 pt-4 border-t border-black/5 dark:border-white/5">
                                 <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-2">Checklist</h3>
-                                {checklistItems.map((item, index) => (
+                                {checklistItems.map((item) => (
                                     <ChecklistItem
                                         key={item.id}
                                         {...item}
                                         onToggle={toggleChecklistItem}
                                         onRemove={removeChecklistItem}
                                         onChange={updateChecklistItem}
+                                        onEnter={addChecklistItem}
                                         autoFocus={false}
                                     />
                                 ))}
@@ -462,8 +463,8 @@ export default function EditNote() {
                                                         key={label.id}
                                                         onClick={() => toggleLabel(label.id)}
                                                         className={`w-full text-left px-2 py-1.5 rounded-lg text-sm transition-colors flex items-center justify-between ${selectedLabels.includes(label.id)
-                                                                ? 'bg-primary/10 text-primary'
-                                                                : 'hover:bg-gray-50 dark:hover:bg-gray-700/50 text-gray-600 dark:text-gray-400'
+                                                            ? 'bg-primary/10 text-primary'
+                                                            : 'hover:bg-gray-50 dark:hover:bg-gray-700/50 text-gray-600 dark:text-gray-400'
                                                             }`}
                                                     >
                                                         {label.name}

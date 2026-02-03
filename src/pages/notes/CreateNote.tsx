@@ -248,6 +248,7 @@ export default function CreateNote() {
                                         onToggle={toggleChecklistItem}
                                         onRemove={removeChecklistItem}
                                         onChange={updateChecklistItem}
+                                        onEnter={addChecklistItem}
                                         autoFocus={index === checklistItems.length - 1}
                                     />
                                 ))}
@@ -363,8 +364,8 @@ export default function CreateNote() {
                                                         key={label.id}
                                                         onClick={() => toggleLabel(label.id)}
                                                         className={`w-full text-left px-2 py-1.5 rounded-lg text-sm transition-colors flex items-center justify-between ${selectedLabels.includes(label.id)
-                                                                ? 'bg-primary/10 text-primary'
-                                                                : 'hover:bg-gray-50 dark:hover:bg-gray-700/50 text-gray-600 dark:text-gray-400'
+                                                            ? 'bg-primary/10 text-primary'
+                                                            : 'hover:bg-gray-50 dark:hover:bg-gray-700/50 text-gray-600 dark:text-gray-400'
                                                             }`}
                                                     >
                                                         {label.name}

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { getNotes, pinNote, unpinNote, archiveNote, deleteNote } from '../../services/offlineApi';
 import NoteCard from '../../components/NoteCard';
 import SearchBar from '../../components/SearchBar';
-import { Plus, LayoutGrid, List, SlidersHorizontal, Loader2, Sparkles } from 'lucide-react';
+import { Plus, LayoutGrid, List, SlidersHorizontal, Loader2, StickyNote } from 'lucide-react';
 
 interface Note {
     id: string | number;
@@ -109,11 +109,11 @@ export default function NotesPage() {
                 {/* Header Section */}
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12">
                     <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 bg-primary rounded-2xl flex items-center justify-center text-white shadow-lg shadow-primary/20 rotate-3">
-                            <Sparkles size={24} />
+                        <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center text-primary shadow-sm rotate-3">
+                            <StickyNote size={24} fill="currentColor" fillOpacity={0.2} />
                         </div>
                         <div>
-                            <h1 className="text-3xl font-extrabold text-gray-900 dark:text-white tracking-tight">My Notes</h1>
+                            <h1 className="text-3xl font-extrabold text-gray-900 dark:text-white tracking-tight">Homa Notes</h1>
                             <p className="text-sm text-gray-500 font-medium">Capture your thoughts instantly</p>
                         </div>
                     </div>
@@ -160,7 +160,7 @@ export default function NotesPage() {
                 ) : filteredNotes.length === 0 ? (
                     <div className="text-center py-32 flex flex-col items-center">
                         <div className="w-24 h-24 bg-gray-100 dark:bg-gray-800 rounded-[2.5rem] flex items-center justify-center mb-8 rotate-12 transition-transform hover:rotate-0 duration-500 group">
-                            <Sparkles className="w-12 h-12 text-gray-300 group-hover:text-primary transition-colors" />
+                            <StickyNote className="w-12 h-12 text-gray-300 group-hover:text-primary transition-colors" fill="currentColor" fillOpacity={0.1} />
                         </div>
                         <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-3">
                             {searchQuery ? 'No match found' : 'Start your journey'}

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { StickyNote } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import api from '../../services/api';
 
@@ -40,10 +41,11 @@ export default function Register() {
         <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 to-blue-50 dark:from-gray-900 dark:to-gray-800 px-4">
             <div className="max-w-md w-full space-y-8">
                 <div className="text-center">
-                    <div className="mx-auto h-16 w-16 bg-primary rounded-2xl flex items-center justify-center mb-4">
-                        <span className="text-3xl font-bold text-white">N</span>
+                    <h1 className="text-2xl font-black text-gray-900 dark:text-white mb-6 uppercase tracking-widest">Homa Notes</h1>
+                    <div className="mx-auto h-20 w-20 bg-primary/10 rounded-[2rem] flex items-center justify-center mb-6 shadow-sm rotate-3">
+                        <StickyNote size={40} className="text-primary" fill="currentColor" fillOpacity={0.2} />
                     </div>
-                    <h2 className="text-3xl font-bold text-gray-900 dark:text-white">Create your account</h2>
+                    <h2 className="text-3xl font-extrabold text-gray-900 dark:text-white tracking-tight">Create your account</h2>
                     <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
                         Start taking notes with offline-first sync
                     </p>

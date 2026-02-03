@@ -1,9 +1,8 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { X, Save, RotateCcw, Trash2, Edit3, Edit2, Minus, Edit, Eraser } from 'lucide-react';
+import { X, RotateCcw, RotateCw, Trash2, Edit3, Edit2, Minus, Edit, Eraser, Check } from 'lucide-react';
 
 type DrawingCanvasProps = {
     onDrawingSaved: (imageUri: string) => void;
-    onDrawingDeleted?: () => void;
     existingDrawing?: string;
     isOpen: boolean;
     onClose: () => void;
@@ -26,7 +25,6 @@ const BRUSH_CONFIGS = {
 
 const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
     onDrawingSaved,
-    onDrawingDeleted,
     existingDrawing,
     isOpen,
     onClose
@@ -37,13 +35,15 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
     const [brushType, setBrushType] = useState<BrushType>('pen');
     const [selectedColor, setSelectedColor] = useState('#000000');
     const [history, setHistory] = useState<string[]>([]);
+    const [redoStack, setRedoStack] = useState<string[]>([]);
 
     useEffect(() => {
         if (!isOpen || !canvasRef.current) return;
 
         const canvas = canvasRef.current;
-        // Set canvas internal resolution to match display size
-        const rect = canvas.getBoundingClientRect();
+        const rect = canvas.parentElement!.getBoundingClientRect();
+
+        // Increase resolution for hi-dpi screens
         canvas.width = rect.width * window.devicePixelRatio;
         canvas.height = rect.height * window.devicePixelRatio;
 
@@ -62,18 +62,26 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
                 const img = new Image();
                 img.onload = () => {
                     context.drawImage(img, 0, 0, rect.width, rect.height);
-                    saveState();
+                    saveInitialState();
                 };
                 img.src = existingDrawing;
             } else {
-                saveState();
+                saveInitialState();
             }
         }
     }, [isOpen]);
 
+    const saveInitialState = () => {
+        if (canvasRef.current) {
+            setHistory([canvasRef.current.toDataURL()]);
+            setRedoStack([]);
+        }
+    };
+
     const saveState = useCallback(() => {
         if (canvasRef.current) {
-            setHistory(prev => [...prev.slice(-10), canvasRef.current!.toDataURL()]);
+            setHistory(prev => [...prev, canvasRef.current!.toDataURL()]);
+            setRedoStack([]); // Clear redo stack on new action
         }
     }, []);
 
@@ -128,11 +136,14 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
         }
     };
 
-    const handleUndo = () => {
+    const handleUndo = (e?: React.MouseEvent) => {
+        e?.stopPropagation();
         if (history.length <= 1) return;
 
         const newHistory = [...history];
-        newHistory.pop(); // Remove current state
+        const currentState = newHistory.pop()!;
+        setRedoStack(prev => [...prev, currentState]);
+
         const prevState = newHistory[newHistory.length - 1];
 
         const img = new Image();
@@ -145,7 +156,26 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
         img.src = prevState;
     };
 
-    const handleClear = () => {
+    const handleRedo = (e?: React.MouseEvent) => {
+        e?.stopPropagation();
+        if (redoStack.length === 0) return;
+
+        const newRedoStack = [...redoStack];
+        const nextState = newRedoStack.pop()!;
+
+        const img = new Image();
+        img.onload = () => {
+            const rect = canvasRef.current!.getBoundingClientRect();
+            contextRef.current!.clearRect(0, 0, rect.width, rect.height);
+            contextRef.current!.drawImage(img, 0, 0, rect.width, rect.height);
+            setHistory(prev => [...prev, nextState]);
+            setRedoStack(newRedoStack);
+        };
+        img.src = nextState;
+    };
+
+    const handleClear = (e?: React.MouseEvent) => {
+        e?.stopPropagation();
         if (!contextRef.current || !canvasRef.current) return;
         const rect = canvasRef.current.getBoundingClientRect();
         contextRef.current.fillStyle = '#ffffff';
@@ -153,7 +183,8 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
         saveState();
     };
 
-    const handleSave = () => {
+    const handleSave = (e?: React.MouseEvent) => {
+        e?.stopPropagation();
         if (canvasRef.current) {
             const dataUrl = canvasRef.current.toDataURL('image/png');
             onDrawingSaved(dataUrl);
@@ -164,23 +195,55 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-            <div className="bg-white dark:bg-gray-900 w-full max-w-4xl h-[90vh] rounded-3xl shadow-2xl flex flex-col overflow-hidden">
-                {/* Header */}
-                <div className="flex items-center justify-between p-6 border-b border-gray-100 dark:border-gray-800">
-                    <div className="flex items-center gap-3">
-                        <Edit3 className="text-primary" />
-                        <h2 className="text-xl font-bold text-gray-900 dark:text-white">Drawing Canvas</h2>
-                    </div>
-                    <div className="flex items-center gap-2">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-md p-0 sm:p-4">
+            <div className="bg-white dark:bg-gray-900 w-full h-full sm:h-[95vh] sm:max-w-5xl sm:rounded-[2.5rem] shadow-2xl flex flex-col overflow-hidden">
+                {/* Header - Put critical actions here to ensure visibility */}
+                <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-gray-800 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md z-10">
+                    <div className="flex items-center gap-4">
                         <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors text-gray-500">
                             <X size={24} />
+                        </button>
+                        <h2 className="text-lg font-bold text-gray-900 dark:text-white hidden min-[400px]:block">Drawing</h2>
+                    </div>
+
+                    <div className="flex items-center gap-1 sm:gap-3">
+                        <button
+                            onClick={handleUndo}
+                            disabled={history.length <= 1}
+                            className="p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl disabled:opacity-20 transition-all"
+                            title="Undo"
+                        >
+                            <RotateCcw size={20} />
+                        </button>
+                        <button
+                            onClick={handleRedo}
+                            disabled={redoStack.length === 0}
+                            className="p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl disabled:opacity-20 transition-all"
+                            title="Redo"
+                        >
+                            <RotateCw size={20} />
+                        </button>
+                        <div className="w-px h-6 bg-gray-200 dark:bg-gray-700 mx-1" />
+                        <button
+                            onClick={handleClear}
+                            className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 rounded-xl transition-all"
+                            title="Clear Canvas"
+                        >
+                            <Trash2 size={20} />
+                        </button>
+                        <button
+                            onClick={handleSave}
+                            className="flex items-center gap-2 px-4 sm:px-6 py-2 bg-primary hover:bg-primary-dark text-white rounded-2xl font-bold shadow-lg shadow-primary/20 transition-all ml-2"
+                        >
+                            <Check size={18} className="sm:hidden" />
+                            <span className="hidden sm:inline">Save Drawing</span>
+                            <span className="sm:hidden">Save</span>
                         </button>
                     </div>
                 </div>
 
-                {/* Canvas Area */}
-                <div className="flex-1 bg-gray-100 dark:bg-gray-950 p-6 relative">
+                {/* Canvas Area - Use min-h-0 to ensure it can shrink if needed */}
+                <div className="flex-1 bg-gray-50 dark:bg-gray-950 relative min-h-0 overflow-hidden">
                     <canvas
                         ref={canvasRef}
                         onMouseDown={startDrawing}
@@ -190,36 +253,37 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
                         onTouchStart={startDrawing}
                         onTouchMove={draw}
                         onTouchEnd={stopDrawing}
-                        className="w-full h-full bg-white rounded-xl shadow-inner cursor-crosshair touch-none"
+                        className="w-full h-full bg-white cursor-crosshair touch-none"
                     />
                 </div>
 
-                {/* Toolbar */}
-                <div className="p-6 bg-white dark:bg-gray-900 border-t border-gray-100 dark:border-gray-800">
-                    <div className="flex flex-wrap items-center justify-between gap-6">
+                {/* Toolbar - Brushes and Colors */}
+                <div className="px-6 py-6 bg-white dark:bg-gray-900 border-t border-gray-100 dark:border-gray-800 overflow-x-auto">
+                    <div className="flex items-center gap-8 min-w-max">
                         {/* Brushes */}
-                        <div className="flex items-center gap-1 p-1 bg-gray-100 dark:bg-gray-800 rounded-xl">
+                        <div className="flex items-center gap-1 p-1 bg-gray-100 dark:bg-gray-800 rounded-2xl">
                             {(Object.keys(BRUSH_CONFIGS) as BrushType[]).map(type => {
                                 const Icon = BRUSH_CONFIGS[type].icon;
                                 return (
                                     <button
                                         key={type}
                                         onClick={() => setBrushType(type)}
-                                        className={`p-2 rounded-lg transition-all flex items-center gap-2 ${brushType === type
-                                                ? 'bg-white dark:bg-gray-700 text-primary shadow-sm scale-105'
-                                                : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                                        className={`p-3 rounded-xl transition-all ${brushType === type
+                                            ? 'bg-white dark:bg-gray-700 text-primary shadow-md scale-105'
+                                            : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
                                             }`}
                                         title={type}
                                     >
                                         <Icon size={20} />
-                                        <span className="text-xs font-bold capitalize hidden sm:inline">{type}</span>
                                     </button>
                                 );
                             })}
                         </div>
 
+                        <div className="w-px h-10 bg-gray-200 dark:bg-gray-700" />
+
                         {/* Colors */}
-                        <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex items-center gap-2.5">
                             {COLORS.map(color => (
                                 <button
                                     key={color}
@@ -227,37 +291,11 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
                                         setSelectedColor(color);
                                         if (brushType === 'eraser') setBrushType('pen');
                                     }}
-                                    className={`w-8 h-8 rounded-full border-2 transition-transform hover:scale-110 ${selectedColor === color && brushType !== 'eraser' ? 'border-primary ring-2 ring-primary/20' : 'border-transparent'
+                                    className={`w-9 h-9 rounded-full border-2 transition-transform hover:scale-110 active:scale-95 ${selectedColor === color && brushType !== 'eraser' ? 'border-primary ring-4 ring-primary/10' : 'border-transparent'
                                         } ${color === '#FFFFFF' ? 'border-gray-200 shadow-inner' : ''}`}
                                     style={{ backgroundColor: color }}
                                 />
                             ))}
-                        </div>
-
-                        {/* Actions */}
-                        <div className="flex items-center gap-2 ml-auto">
-                            <button
-                                onClick={handleUndo}
-                                disabled={history.length <= 1}
-                                className="flex items-center gap-2 px-4 py-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl disabled:opacity-30 transition-colors"
-                            >
-                                <RotateCcw size={18} />
-                                <span className="text-sm font-semibold">Undo</span>
-                            </button>
-                            <button
-                                onClick={handleClear}
-                                className="flex items-center gap-2 px-4 py-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 rounded-xl transition-colors"
-                            >
-                                <Trash2 size={18} />
-                                <span className="text-sm font-semibold">Clear</span>
-                            </button>
-                            <button
-                                onClick={handleSave}
-                                className="flex items-center gap-2 px-6 py-2 bg-primary hover:bg-primary-dark text-white rounded-xl font-bold shadow-lg shadow-primary/20 transition-all"
-                            >
-                                <Save size={18} />
-                                Save Drawing
-                            </button>
                         </div>
                     </div>
                 </div>

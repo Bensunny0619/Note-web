@@ -17,6 +17,18 @@ let isOnlineGlobal = true;
 
 export const setGlobalOnlineStatus = (online: boolean) => {
     isOnlineGlobal = online;
+    if (online) {
+        processSyncQueue();
+    }
+};
+
+const fileToDataURL = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
 };
 
 // Notes API
@@ -105,7 +117,7 @@ export const createNote = async (payload: any): Promise<any> => {
         labels: payload.labels || [],
         images: payload.images || [],
         audio_recordings: payload.audio_recordings || [],
-        drawings: payload.drawings || [],
+        drawings: payload.drawings || (payload.drawing_uri ? [{ id: `temp_drawing_${Date.now()}`, image_url: payload.drawing_uri }] : []),
         reminder: null,
     };
 
@@ -304,17 +316,21 @@ export const restoreNote = async (id: string | number): Promise<void> => {
 export const uploadImage = async (noteId: string | number, imageFile: File): Promise<void> => {
     const cached = await getCachedNoteById(noteId);
     if (cached) {
-        const imageUrl = URL.createObjectURL(imageFile);
-        const newImage = {
-            id: `temp_${Date.now()}`,
-            image_url: imageUrl,
-            created_at: new Date().toISOString()
-        };
-        const updatedImages = [...(cached.data.images || []), newImage];
-        await updateCachedNote(noteId, {
-            data: { ...cached.data, images: updatedImages },
-            locallyModified: true
-        });
+        try {
+            const base64Data = await fileToDataURL(imageFile);
+            const newImage = {
+                id: `temp_${Date.now()}`,
+                image_url: base64Data,
+                created_at: new Date().toISOString()
+            };
+            const updatedImages = [...(cached.data.images || []), newImage];
+            await updateCachedNote(noteId, {
+                data: { ...cached.data, images: updatedImages },
+                locallyModified: true
+            });
+        } catch (err) {
+            console.error('Failed to convert image to base64 for cache:', err);
+        }
     }
 
     await enqueueOperation({
@@ -323,6 +339,8 @@ export const uploadImage = async (noteId: string | number, imageFile: File): Pro
         resourceId: noteId,
         payload: { noteId, imageFile },
     });
+
+    processSyncQueue();
 };
 
 // Label operations
@@ -414,3 +432,130 @@ export const deleteReminder = async (noteId: string | number, reminderId: number
         payload: { reminderId },
     });
 };
+
+// Sync Processor
+let isSyncing = false;
+
+export const processSyncQueue = async () => {
+    if (!isOnlineGlobal || isSyncing) return;
+
+    const queue = await getSyncQueue();
+    if (queue.length === 0) return;
+
+    isSyncing = true;
+    console.log(`🔄 [Sync] Processing ${queue.length} operations...`);
+
+    const completedIds: number[] = [];
+
+    for (const op of queue) {
+        try {
+            console.log(`📡 [Sync] Processing ${op.type} for ${op.resourceType}:${op.resourceId}`);
+
+            let success = false;
+
+            switch (op.type) {
+                case 'CREATE':
+                    const createRes = await api.post('/notes', op.payload);
+                    const serverNote = createRes.data.data || createRes.data;
+                    await removeCachedNote(op.resourceId);
+                    await addCachedNote({
+                        id: serverNote.id,
+                        data: serverNote,
+                        locallyModified: false
+                    });
+                    success = true;
+                    break;
+
+                case 'UPDATE':
+                    await api.put(`/notes/${op.resourceId}`, op.payload);
+                    success = true;
+                    break;
+
+                case 'DELETE':
+                    await api.delete(`/notes/${op.resourceId}`);
+                    success = true;
+                    break;
+
+                case 'PIN_NOTE':
+                    await api.post(`/notes/${op.resourceId}/pin`);
+                    success = true;
+                    break;
+
+                case 'UNPIN_NOTE':
+                    await api.post(`/notes/${op.resourceId}/unpin`);
+                    success = true;
+                    break;
+
+                case 'ARCHIVE_NOTE':
+                    await api.post(`/notes/${op.resourceId}/archive`);
+                    success = true;
+                    break;
+
+                case 'UNARCHIVE_NOTE':
+                    await api.post(`/notes/${op.resourceId}/unarchive`);
+                    success = true;
+                    break;
+
+                case 'UPLOAD_IMAGE':
+                    const formData = new FormData();
+                    formData.append('image', op.payload.imageFile);
+                    await api.post(`/notes/${op.resourceId}/images`, formData, {
+                        headers: { 'Content-Type': 'multipart/form-data' }
+                    });
+                    success = true;
+                    break;
+
+                case 'CREATE_AUDIO':
+                    try {
+                        const audioBlob = await fetch(op.payload.audioFile.uri).then(r => r.blob());
+                        const audioFormData = new FormData();
+                        audioFormData.append('audio', audioBlob, 'recording.wav');
+                        await api.post(`/notes/${op.resourceId}/audio`, audioFormData, {
+                            headers: { 'Content-Type': 'multipart/form-data' }
+                        });
+                        success = true;
+                    } catch (e) {
+                        console.error('Failed to sync audio:', e);
+                        success = true;
+                    }
+                    break;
+
+                case 'CREATE_DRAWING':
+                    await api.post(`/notes/${op.resourceId}/drawings`, {
+                        image_data: op.payload.drawing_uri
+                    });
+                    success = true;
+                    break;
+
+                default:
+                    console.warn(`⚠️ [Sync] Unknown operation type: ${op.type}`);
+                    success = true;
+            }
+
+            if (success) {
+                completedIds.push(op.id!);
+            }
+        } catch (err: any) {
+            console.error(`❌ [Sync] Failed ${op.type} for ${op.resourceId}:`, err.message);
+            if (err.response?.status === 404 || err.response?.status === 422) {
+                completedIds.push(op.id!);
+            } else {
+                break;
+            }
+        }
+    }
+
+    if (completedIds.length > 0) {
+        const currentQueue = await getSyncQueue();
+        const updatedQueue = currentQueue.filter(op => !completedIds.includes(op.id!));
+        await setSyncQueue(updatedQueue);
+        console.log(`✅ [Sync] Completed ${completedIds.length} operations. ${updatedQueue.length} remaining.`);
+    }
+
+    isSyncing = false;
+};
+
+// Auto-sync interval
+setInterval(() => {
+    if (isOnlineGlobal) processSyncQueue();
+}, 30000);
