@@ -9,11 +9,11 @@ import Register from './pages/auth/Register';
 import NotesPage from './pages/notes/NotesPage';
 import CreateNote from './pages/notes/CreateNote';
 import EditNote from './pages/notes/EditNote';
-import ArchivePage from './pages/ArchivePage';
-import TrashPage from './pages/TrashPage';
-import LabelsPage from './pages/LabelsPage';
-import RemindersPage from './pages/RemindersPage';
-import SettingsPage from './pages/SettingsPage';
+import ArchivePage from './pages/notes/ArchivePage';
+import TrashPage from './pages/notes/TrashPage';
+import LabelsPage from './pages/notes/LabelsPage';
+import RemindersPage from './pages/notes/RemindersPage';
+import SettingsPage from './pages/notes/SettingsPage';
 import './index.css';
 
 // Protected Route wrapper
@@ -46,20 +46,22 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
     return token ? <Navigate to="/" replace /> : <>{children}</>;
 }
 
+import Layout from './components/Layout';
+
 function AppRoutes() {
     return (
         <Routes>
             <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
             <Route path="/register" element={<PublicRoute><Register /></PublicRoute>} />
 
-            <Route path="/" element={<ProtectedRoute><NotesPage /></ProtectedRoute>} />
-            <Route path="/notes/create" element={<ProtectedRoute><CreateNote /></ProtectedRoute>} />
-            <Route path="/notes/edit/:id" element={<ProtectedRoute><EditNote /></ProtectedRoute>} />
-            <Route path="/archive" element={<ProtectedRoute><ArchivePage /></ProtectedRoute>} />
-            <Route path="/trash" element={<ProtectedRoute><TrashPage /></ProtectedRoute>} />
-            <Route path="/labels" element={<ProtectedRoute><LabelsPage /></ProtectedRoute>} />
-            <Route path="/reminders" element={<ProtectedRoute><RemindersPage /></ProtectedRoute>} />
-            <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
+            <Route path="/" element={<ProtectedRoute><Layout><NotesPage /></Layout></ProtectedRoute>} />
+            <Route path="/notes/create" element={<ProtectedRoute><Layout><CreateNote /></Layout></ProtectedRoute>} />
+            <Route path="/notes/edit/:id" element={<ProtectedRoute><Layout><EditNote /></Layout></ProtectedRoute>} />
+            <Route path="/archive" element={<ProtectedRoute><Layout><ArchivePage /></Layout></ProtectedRoute>} />
+            <Route path="/trash" element={<ProtectedRoute><Layout><TrashPage /></Layout></ProtectedRoute>} />
+            <Route path="/labels" element={<ProtectedRoute><Layout><LabelsPage /></Layout></ProtectedRoute>} />
+            <Route path="/reminders" element={<ProtectedRoute><Layout><RemindersPage /></Layout></ProtectedRoute>} />
+            <Route path="/settings" element={<ProtectedRoute><Layout><SettingsPage /></Layout></ProtectedRoute>} />
         </Routes>
     );
 }

@@ -25,7 +25,9 @@ export default function Register() {
 
         try {
             const response = await api.post('/auth/register', { name, email, password });
-            const { token, user } = response.data;
+            // Laravel returns 'access_token', not 'token'
+            const token = response.data.access_token || response.data.token;
+            const user = response.data.user;
             await register(token, user);
         } catch (err: any) {
             setError(err.response?.data?.message || 'Registration failed. Please try again.');

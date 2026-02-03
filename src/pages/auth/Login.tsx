@@ -15,12 +15,39 @@ export default function Login() {
         setError('');
         setLoading(true);
 
+        console.log('🔐 Attempting login with:', { email, password: '***' });
+        console.log('📡 API Base URL:', 'http://192.168.0.2:8000/api');
+
         try {
             const response = await api.post('/auth/login', { email, password });
-            const { token, user } = response.data;
+            console.log('✅ Login response:', response.data);
+
+            // Laravel returns 'access_token', not 'token'
+            const token = response.data.access_token || response.data.token;
+            const user = response.data.user;
+
+            if (!token) {
+                console.error('❌ No token in response:', response.data);
+                throw new Error('No token received from server');
+            }
+
+            console.log('🎫 Token received:', token.substring(0, 20) + '...');
+            console.log('👤 User data:', user);
+
             await login(token, user);
         } catch (err: any) {
-            setError(err.response?.data?.message || 'Login failed. Please try again.');
+            console.error('❌ LOGIN ERROR - Full details:');
+            console.error('Error object:', err);
+            console.error('Error message:', err.message);
+            console.error('Error response:', err.response);
+            console.error('Response status:', err.response?.status);
+            console.error('Response data:', err.response?.data);
+            console.error('Response headers:', err.response?.headers);
+            console.error('Request config:', err.config);
+
+            const errorMessage = err.response?.data?.message || err.message || 'Login failed. Please try again.';
+            setError(errorMessage);
+            console.error('📢 Displaying error to user:', errorMessage);
         } finally {
             setLoading(false);
         }
@@ -39,7 +66,7 @@ export default function Login() {
                     </p>
                 </div>
 
-                <form className="mt-8 space-y-6 bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-xl" onPress={handleSubmit}>
+                <form className="mt-8 space-y-6 bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-xl" onSubmit={handleSubmit}>
                     {error && (
                         <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 px-4 py-3 rounded-lg text-sm">
                             {error}
