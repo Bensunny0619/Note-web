@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { getNotes, pinNote, unpinNote, archiveNote, deleteNote } from '../../services/offlineApi';
 import NoteCard from '../../components/NoteCard';
 import SearchBar from '../../components/SearchBar';
+import { Plus, LayoutGrid, List, SlidersHorizontal, Loader2, Sparkles } from 'lucide-react';
 
 interface Note {
     id: string | number;
@@ -16,8 +17,8 @@ interface Note {
     labels?: Array<{ id: number; name: string; color: string }>;
     checklist_items?: Array<{ id: number; text: string; is_completed: boolean }>;
     images?: Array<{ id: number; image_url: string }>;
-    audio_recordings?: Array<{ id: number; audio_url: string }>;
-    drawings?: Array<{ id: number; drawing_url: string }>;
+    audio_recordings?: Array<{ id: number; file_url: string }>;
+    drawings?: Array<{ id: number; image_url: string }>;
     reminder?: { remind_at: string } | null;
 }
 
@@ -28,13 +29,13 @@ export default function NotesPage() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [searchQuery, setSearchQuery] = useState('');
+    const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
     useEffect(() => {
         fetchNotes();
     }, []);
 
     useEffect(() => {
-        // Filter notes based on search query
         if (searchQuery.trim()) {
             const query = searchQuery.toLowerCase();
             const filtered = notes.filter(note =>
@@ -54,10 +55,8 @@ export default function NotesPage() {
             setError('');
             const data = await getNotes();
 
-            // Filter out archived and deleted notes
             const activeNotes = data.filter(note => !note.is_archived && !note.is_deleted);
 
-            // Sort: pinned notes first, then by updated_at
             const sorted = activeNotes.sort((a, b) => {
                 if (a.is_pinned && !b.is_pinned) return -1;
                 if (!a.is_pinned && b.is_pinned) return 1;
@@ -77,13 +76,9 @@ export default function NotesPage() {
     const handlePin = async (id: string | number) => {
         const note = notes.find(n => n.id === id);
         if (!note) return;
-
         try {
-            if (note.is_pinned) {
-                await unpinNote(id);
-            } else {
-                await pinNote(id);
-            }
+            if (note.is_pinned) await unpinNote(id);
+            else await pinNote(id);
             await fetchNotes();
         } catch (err) {
             console.error('Failed to pin/unpin note:', err);
@@ -100,78 +95,100 @@ export default function NotesPage() {
     };
 
     const handleDelete = async (id: string | number) => {
-        if (window.confirm('Are you sure you want to delete this note?')) {
-            try {
-                await deleteNote(id);
-                await fetchNotes();
-            } catch (err) {
-                console.error('Failed to delete note:', err);
-            }
+        try {
+            await deleteNote(id);
+            await fetchNotes();
+        } catch (err) {
+            console.error('Failed to delete note:', err);
         }
     };
 
-    const handleSearch = (query: string) => {
-        setSearchQuery(query);
-    };
-
-    const handleCreateNote = () => {
-        navigate('/notes/create');
-    };
-
     return (
-        <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-            <div className="max-w-7xl mx-auto px-4 py-8">
-                {/* Header */}
-                <div className="mb-8">
-                    <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-6">Notes</h1>
+        <div className="min-h-screen bg-transparent">
+            <div className="max-w-7xl mx-auto px-6 py-10">
+                {/* Header Section */}
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12">
+                    <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 bg-primary rounded-2xl flex items-center justify-center text-white shadow-lg shadow-primary/20 rotate-3">
+                            <Sparkles size={24} />
+                        </div>
+                        <div>
+                            <h1 className="text-3xl font-extrabold text-gray-900 dark:text-white tracking-tight">My Notes</h1>
+                            <p className="text-sm text-gray-500 font-medium">Capture your thoughts instantly</p>
+                        </div>
+                    </div>
 
-                    {/* Search Bar */}
-                    <SearchBar onSearch={handleSearch} />
+                    <div className="flex items-center gap-3">
+                        <SearchBar onSearch={setSearchQuery} />
+                        <div className="flex bg-white dark:bg-gray-800 p-1 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
+                            <button
+                                onClick={() => setViewMode('grid')}
+                                className={`p-2 rounded-lg transition-all ${viewMode === 'grid' ? 'bg-primary/10 text-primary' : 'text-gray-400'}`}
+                            >
+                                <LayoutGrid size={20} />
+                            </button>
+                            <button
+                                onClick={() => setViewMode('list')}
+                                className={`p-2 rounded-lg transition-all ${viewMode === 'list' ? 'bg-primary/10 text-primary' : 'text-gray-400'}`}
+                            >
+                                <List size={20} />
+                            </button>
+                        </div>
+                        <button className="p-3 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm text-gray-500 hover:text-primary transition-colors">
+                            <SlidersHorizontal size={20} />
+                        </button>
+                    </div>
                 </div>
 
-                {/* Loading State */}
-                {loading && (
-                    <div className="flex justify-center items-center py-12">
-                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+                {/* Content Area */}
+                {loading ? (
+                    <div className="flex flex-col justify-center items-center py-32 gap-4">
+                        <Loader2 className="w-12 h-12 text-primary animate-spin" />
+                        <p className="text-gray-500 font-medium animate-pulse">Syncing your thoughts...</p>
                     </div>
-                )}
-
-                {/* Error State */}
-                {error && (
-                    <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 px-4 py-3 rounded-lg mb-6">
-                        {error}
+                ) : error ? (
+                    <div className="max-w-lg mx-auto bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/30 p-8 rounded-3xl text-center">
+                        <div className="w-16 h-16 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <X className="text-red-600" />
+                        </div>
+                        <h3 className="text-xl font-bold text-red-900 dark:text-red-400 mb-2">Connection Issue</h3>
+                        <p className="text-red-700 dark:text-red-500/70 mb-6">{error}</p>
+                        <button onClick={fetchNotes} className="px-6 py-2 bg-red-600 text-white rounded-xl font-bold shadow-lg shadow-red-600/20 hover:bg-red-700 transition-all">
+                            Try Again
+                        </button>
                     </div>
-                )}
-
-                {/* Empty State */}
-                {!loading && !error && filteredNotes.length === 0 && (
-                    <div className="text-center py-12">
-                        <svg className="mx-auto h-24 w-24 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                        </svg>
-                        <h3 className="text-xl font-medium text-gray-900 dark:text-white mb-2">
-                            {searchQuery ? 'No notes found' : 'No notes yet'}
+                ) : filteredNotes.length === 0 ? (
+                    <div className="text-center py-32 flex flex-col items-center">
+                        <div className="w-24 h-24 bg-gray-100 dark:bg-gray-800 rounded-[2.5rem] flex items-center justify-center mb-8 rotate-12 transition-transform hover:rotate-0 duration-500 group">
+                            <Sparkles className="w-12 h-12 text-gray-300 group-hover:text-primary transition-colors" />
+                        </div>
+                        <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-3">
+                            {searchQuery ? 'No match found' : 'Start your journey'}
                         </h3>
-                        <p className="text-gray-600 dark:text-gray-400 mb-6">
-                            {searchQuery ? 'Try a different search term' : 'Create your first note to get started'}
+                        <p className="text-gray-500 max-w-sm mb-10 leading-relaxed font-medium">
+                            {searchQuery
+                                ? "We couldn't find any notes matching your search request."
+                                : "Create your first note to begin capturing your ideas and organizing your life."}
                         </p>
                         {!searchQuery && (
                             <button
-                                onClick={handleCreateNote}
-                                className="inline-flex items-center px-6 py-3 border border-transparent rounded-lg shadow-sm text-base font-medium text-white bg-primary hover:bg-primary-dark focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary"
+                                onClick={() => navigate('/notes/create')}
+                                className="group flex items-center gap-3 px-8 py-4 bg-primary text-white rounded-[2rem] font-extrabold shadow-xl shadow-primary/30 hover:shadow-primary/40 hover:-translate-y-1 transition-all"
                             >
-                                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                                </svg>
-                                Create Note
+                                <Plus className="w-6 h-6 group-hover:rotate-90 transition-transform duration-300" />
+                                <span>Create Note</span>
                             </button>
                         )}
                     </div>
-                )}
-
-                {/* Notes Grid */}
-                {!loading && !error && filteredNotes.length > 0 && (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                ) : (
+                    <div className={`
+                        grid gap-6 
+                        ${viewMode === 'grid'
+                            ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5'
+                            : 'grid-cols-1 max-w-3xl mx-auto'
+                        }
+                        animate-in fade-in duration-500
+                    `}>
                         {filteredNotes.map((note) => (
                             <NoteCard
                                 key={note.id}
@@ -186,15 +203,28 @@ export default function NotesPage() {
             </div>
 
             {/* Floating Action Button */}
-            <button
-                onClick={handleCreateNote}
-                className="fixed bottom-8 right-8 w-14 h-14 bg-primary hover:bg-primary-dark text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-200 flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary"
-                title="Create new note"
-            >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-            </button>
+            {!loading && filteredNotes.length > 0 && (
+                <button
+                    onClick={() => navigate('/notes/create')}
+                    className="
+                        fixed bottom-8 right-8 w-16 h-16 
+                        bg-primary hover:bg-primary-dark text-white 
+                        rounded-2xl shadow-2xl hover:shadow-primary/40 
+                        transition-all duration-300 flex items-center justify-center 
+                        hover:-translate-y-2 hover:rotate-6
+                    "
+                    title="Create new note"
+                >
+                    <Plus className="w-8 h-8" />
+                </button>
+            )}
         </div>
     );
 }
+
+const X = ({ className }: { className?: string }) => (
+    <svg className={className} width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <line x1="18" y1="6" x2="6" y2="18"></line>
+        <line x1="6" y1="6" x2="18" y2="18"></line>
+    </svg>
+);

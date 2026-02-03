@@ -1,9 +1,11 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { createNote } from '../../services/offlineApi';
+import { createNote, uploadImage } from '../../services/offlineApi';
 import { useLabels } from '../../contexts/LabelContext';
-import { Plus, ImageIcon, Mic, Edit3, Bell, ChevronLeft, Tag } from 'lucide-react';
+import { Plus, ImageIcon, Mic, Edit3, Bell, ChevronLeft, Tag, X as XIcon } from 'lucide-react';
 import ChecklistItem from '../../components/ChecklistItem';
+import AudioRecorder from '../../components/AudioRecorder';
+import DrawingCanvas from '../../components/DrawingCanvas';
 
 const COLORS = [
     { name: 'Default', value: 'default', class: 'bg-white dark:bg-gray-800' },
@@ -38,11 +40,18 @@ export default function CreateNote() {
     const [showReminderPicker, setShowReminderPicker] = useState(false);
     const [showLabelPicker, setShowLabelPicker] = useState(false);
 
+    // Media State
+    const [audioUri, setAudioUri] = useState<string | null>(null);
+    const [drawingUri, setDrawingUri] = useState<string | null>(null);
+    const [images, setImages] = useState<{ file: File, preview: string }[]>([]);
+    const [showAudioRecorder, setShowAudioRecorder] = useState(false);
+    const [showDrawingCanvas, setShowDrawingCanvas] = useState(false);
+
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const handleSave = async () => {
-        if (!title.trim() && !content.trim() && checklistItems.length === 0) {
-            setError('Please add a title, content, or checklist items');
+        if (!title.trim() && !content.trim() && checklistItems.length === 0 && !audioUri && !drawingUri && images.length === 0) {
+            setError('Please add some content to your note');
             return;
         }
 
@@ -50,7 +59,7 @@ export default function CreateNote() {
             setSaving(true);
             setError('');
 
-            await createNote({
+            const note = await createNote({
                 title: title.trim(),
                 content: content.trim(),
                 color,
@@ -62,7 +71,16 @@ export default function CreateNote() {
                     })),
                 label_ids: selectedLabels,
                 reminder_at: reminderDate || null,
+                audio_uri: audioUri,
+                drawing_uri: drawingUri,
             });
+
+            // Upload images if any
+            if (images.length > 0) {
+                for (const img of images) {
+                    await uploadImage(note.id, img.file);
+                }
+            }
 
             navigate('/');
         } catch (err: any) {
@@ -71,6 +89,26 @@ export default function CreateNote() {
         } finally {
             setSaving(false);
         }
+    };
+
+    const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = e.target.files;
+        if (files) {
+            const newImages = Array.from(files).map(file => ({
+                file,
+                preview: URL.createObjectURL(file)
+            }));
+            setImages(prev => [...prev, ...newImages]);
+        }
+    };
+
+    const removeImage = (index: number) => {
+        setImages(prev => {
+            const updated = [...prev];
+            URL.revokeObjectURL(updated[index].preview);
+            updated.splice(index, 1);
+            return updated;
+        });
     };
 
     const addChecklistItem = () => {
@@ -137,6 +175,39 @@ export default function CreateNote() {
                 <div
                     className={`${selectedColorClass} rounded-2xl shadow-xl overflow-hidden transition-colors duration-300 border border-gray-200 dark:border-gray-700`}
                 >
+                    {/* Media Previews */}
+                    {images.length > 0 && (
+                        <div className="flex flex-wrap gap-2 p-4 bg-black/5 dark:bg-white/5">
+                            {images.map((img, idx) => (
+                                <div key={idx} className="relative group w-32 h-32 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700">
+                                    <img src={img.preview} alt="" className="w-full h-full object-cover" />
+                                    <button
+                                        onClick={() => removeImage(idx)}
+                                        className="absolute top-1 right-1 p-1 bg-black/50 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                                    >
+                                        <XIcon size={14} />
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    {drawingUri && (
+                        <div className="relative group p-4 bg-black/5 dark:bg-white/5 border-b border-black/5 dark:border-white/5">
+                            <div className="relative w-full aspect-video rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700 bg-white">
+                                <img src={drawingUri} alt="Drawing" className="w-full h-full object-contain" />
+                                <div className="absolute top-2 right-2 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <button onClick={() => setShowDrawingCanvas(true)} className="p-2 bg-black/50 text-white rounded-lg hover:bg-black/70">
+                                        <Edit3 size={16} />
+                                    </button>
+                                    <button onClick={() => setDrawingUri(null)} className="p-2 bg-red-500/80 text-white rounded-lg hover:bg-red-500">
+                                        <XIcon size={16} />
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     <div className="p-8 space-y-6">
                         <input
                             type="text"
@@ -145,6 +216,19 @@ export default function CreateNote() {
                             onChange={(e) => setTitle(e.target.value)}
                             className="w-full bg-transparent border-none focus:ring-0 text-3xl font-bold text-gray-900 dark:text-white placeholder-gray-400 p-0"
                         />
+
+                        {showAudioRecorder && (
+                            <div className="animate-in slide-in-from-top duration-300">
+                                <AudioRecorder
+                                    onAudioRecorded={setAudioUri}
+                                    onAudioDeleted={() => {
+                                        setAudioUri(null);
+                                        setShowAudioRecorder(false);
+                                    }}
+                                    existingAudioUri={audioUri || undefined}
+                                />
+                            </div>
+                        )}
 
                         <textarea
                             placeholder="Take a note..."
@@ -180,7 +264,7 @@ export default function CreateNote() {
                                             <Tag size={12} />
                                             {label.name}
                                             <button onClick={() => toggleLabel(id)} className="hover:text-primary-dark">
-                                                <X size={12} />
+                                                <XIcon size={12} />
                                             </button>
                                         </span>
                                     ) : null;
@@ -194,14 +278,14 @@ export default function CreateNote() {
                                 <Bell size={12} />
                                 {new Date(reminderDate).toLocaleString()}
                                 <button onClick={() => setReminderDate('')} className="hover:text-orange-900">
-                                    <X size={12} />
+                                    <XIcon size={12} />
                                 </button>
                             </div>
                         )}
                     </div>
 
                     {/* Toolbar */}
-                    <div className="bg-gray-100/50 dark:bg-gray-800/50 px-6 py-4 flex flex-wrap items-center justify-between gap-4">
+                    <div className="bg-gray-100/50 dark:bg-gray-800/50 px-6 py-4 flex flex-wrap items-center justify-between gap-4 border-t border-gray-200 dark:border-gray-700">
                         <div className="flex items-center gap-2 relative">
                             <button
                                 onClick={addChecklistItem}
@@ -216,12 +300,20 @@ export default function CreateNote() {
                                 title="Add image"
                             >
                                 <ImageIcon className="w-5 h-5" />
-                                <input type="file" ref={fileInputRef} className="hidden" accept="image/*" multiple />
+                                <input type="file" ref={fileInputRef} className="hidden" accept="image/*" multiple onChange={handleImageSelect} />
                             </button>
-                            <button className="p-2 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors text-gray-600 dark:text-gray-400" title="Audio note">
+                            <button
+                                onClick={() => setShowAudioRecorder(!showAudioRecorder)}
+                                className={`p-2 rounded-lg transition-colors ${showAudioRecorder ? 'bg-primary/10 text-primary' : 'hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400'}`}
+                                title="Audio note"
+                            >
                                 <Mic className="w-5 h-5" />
                             </button>
-                            <button className="p-2 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors text-gray-600 dark:text-gray-400" title="Freehand drawing">
+                            <button
+                                onClick={() => setShowDrawingCanvas(true)}
+                                className="p-2 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors text-gray-600 dark:text-gray-400"
+                                title="Freehand drawing"
+                            >
                                 <Edit3 className="w-5 h-5" />
                             </button>
 
@@ -276,7 +368,7 @@ export default function CreateNote() {
                                                             }`}
                                                     >
                                                         {label.name}
-                                                        {selectedLabels.includes(label.id) && <X size={12} />}
+                                                        {selectedLabels.includes(label.id) && <XIcon size={12} />}
                                                     </button>
                                                 ))
                                             )}
@@ -301,24 +393,13 @@ export default function CreateNote() {
                     </div>
                 </div>
             </div>
+
+            <DrawingCanvas
+                isOpen={showDrawingCanvas}
+                onClose={() => setShowDrawingCanvas(false)}
+                onDrawingSaved={setDrawingUri}
+                existingDrawing={drawingUri || undefined}
+            />
         </div>
     );
 }
-
-// Fixed missing X import in previous thought, using X from lucide-react
-const X = ({ size, className }: { size?: number, className?: string }) => (
-    <svg
-        width={size}
-        height={size}
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        className={className}
-    >
-        <line x1="18" y1="6" x2="6" y2="18"></line>
-        <line x1="6" y1="6" x2="18" y2="18"></line>
-    </svg>
-);

@@ -282,6 +282,24 @@ export const unarchiveNote = async (id: string | number): Promise<void> => {
     });
 };
 
+export const restoreNote = async (id: string | number): Promise<void> => {
+    const cached = await getCachedNoteById(id);
+    if (cached) {
+        await updateCachedNote(id, {
+            data: { ...cached.data, is_deleted: false },
+            locallyModified: true,
+        });
+        console.log('♻️ Note restored locally:', id);
+    }
+
+    await enqueueOperation({
+        type: 'RESTORE_NOTE',
+        resourceType: 'note',
+        resourceId: id,
+        payload: {},
+    });
+};
+
 // Image operations
 export const uploadImage = async (noteId: string | number, imageFile: File): Promise<void> => {
     const cached = await getCachedNoteById(noteId);
