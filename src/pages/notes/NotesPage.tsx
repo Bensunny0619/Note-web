@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { getNotes, pinNote, unpinNote, archiveNote, deleteNote, bulkDeleteNotes, getSyncQueue } from '../../services/offlineApi';
 import NoteCard from '../../components/NoteCard';
 import SearchBar from '../../components/SearchBar';
-import { Plus, LayoutGrid, List, SlidersHorizontal, Loader2, StickyNote, Trash2, X, CheckSquare, Square } from 'lucide-react';
+import { Plus, LayoutGrid, List, SlidersHorizontal, Loader2, StickyNote, Trash2, X, CheckSquare, Square, FilterX } from 'lucide-react';
+import { useLabels } from '../../contexts/LabelContext';
 
 interface Note {
     id: string | number;
@@ -16,10 +17,10 @@ interface Note {
     created_at: string;
     updated_at: string;
     labels?: Array<{ id: number; name: string; color: string }>;
-    checklist_items?: Array<{ id: number; text: string; is_completed: boolean }>;
+    checklist_items?: Array<{ id: number; text: string; is_checked: boolean; is_completed?: boolean }>;
     images?: Array<{ id: number; image_url: string }>;
-    audio_recordings?: Array<{ id: number; file_url: string }>;
-    drawings?: Array<{ id: number; image_url: string }>;
+    audio_recordings?: Array<{ id: number; audio_url: string }>;
+    drawings?: Array<{ id: number; drawing_url: string }>;
     reminder?: { remind_at: string } | null;
 }
 
@@ -33,6 +34,22 @@ export default function NotesPage() {
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
     const [selectedIds, setSelectedIds] = useState<(string | number)[]>([]);
     const [syncQueueLength, setSyncQueueLength] = useState(0);
+    const { labels } = useLabels();
+
+    // Filter States
+    const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
+    const [selectedLabelId, setSelectedLabelId] = useState<number | null>(null);
+    const [selectedColor, setSelectedColor] = useState<string | null>(null);
+
+    const noteColors = [
+        { value: 'red', label: 'Red', color: 'bg-red-50 dark:bg-red-900/20' },
+        { value: 'orange', label: 'Orange', color: 'bg-orange-50 dark:bg-orange-900/20' },
+        { value: 'yellow', label: 'Yellow', color: 'bg-yellow-50 dark:bg-yellow-900/20' },
+        { value: 'green', label: 'Green', color: 'bg-green-50 dark:bg-green-900/20' },
+        { value: 'blue', label: 'Blue', color: 'bg-blue-50 dark:bg-blue-900/20' },
+        { value: 'purple', label: 'Purple', color: 'bg-purple-50 dark:bg-purple-900/20' },
+        { value: 'pink', label: 'Pink', color: 'bg-pink-50 dark:bg-pink-900/20' },
+    ];
 
     useEffect(() => {
         fetchNotes();
@@ -45,18 +62,32 @@ export default function NotesPage() {
     }, []);
 
     useEffect(() => {
+        let filtered = notes;
+
+        // 1. Search Query
         if (searchQuery.trim()) {
             const query = searchQuery.toLowerCase();
-            const filtered = notes.filter(note =>
+            filtered = filtered.filter(note =>
                 note.title?.toLowerCase().includes(query) ||
                 note.content?.toLowerCase().includes(query) ||
                 note.labels?.some(label => label.name.toLowerCase().includes(query))
             );
-            setFilteredNotes(filtered);
-        } else {
-            setFilteredNotes(notes);
         }
-    }, [searchQuery, notes]);
+
+        // 2. Label Filter
+        if (selectedLabelId) {
+            filtered = filtered.filter(note =>
+                note.labels?.some(label => label.id === selectedLabelId)
+            );
+        }
+
+        // 3. Color Filter
+        if (selectedColor) {
+            filtered = filtered.filter(note => note.color === selectedColor);
+        }
+
+        setFilteredNotes(filtered);
+    }, [searchQuery, notes, selectedLabelId, selectedColor]);
 
     const fetchNotes = async () => {
         try {
@@ -212,9 +243,92 @@ export default function NotesPage() {
                                 <List size={20} />
                             </button>
                         </div>
-                        <button className="p-3 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm text-gray-500 hover:text-primary transition-colors">
-                            <SlidersHorizontal size={20} />
-                        </button>
+                        <div className="relative">
+                            <button
+                                onClick={() => setIsFilterMenuOpen(!isFilterMenuOpen)}
+                                className={`p-3 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm transition-all ${isFilterMenuOpen || selectedLabelId || selectedColor ? 'bg-primary/10 text-primary border-primary/30' : 'bg-white dark:bg-gray-800 text-gray-500 hover:text-primary'}`}
+                            >
+                                <SlidersHorizontal size={20} />
+                            </button>
+
+                            {/* Filter Dropdown */}
+                            {isFilterMenuOpen && (
+                                <>
+                                    <div
+                                        className="fixed inset-0 z-30"
+                                        onClick={() => setIsFilterMenuOpen(false)}
+                                    />
+                                    <div className="absolute right-0 mt-3 w-72 bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-2xl z-40 overflow-hidden animate-in fade-in zoom-in duration-200 origin-top-right">
+                                        <div className="p-4 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
+                                            <h3 className="font-bold text-gray-900 dark:text-white">Filters</h3>
+                                            {(selectedLabelId || selectedColor) && (
+                                                <button
+                                                    onClick={() => {
+                                                        setSelectedLabelId(null);
+                                                        setSelectedColor(null);
+                                                    }}
+                                                    className="text-xs font-bold text-primary hover:underline"
+                                                >
+                                                    Clear All
+                                                </button>
+                                            )}
+                                        </div>
+
+                                        <div className="p-4 max-h-[400px] overflow-y-auto">
+                                            {/* Labels Section */}
+                                            <div className="mb-6">
+                                                <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-gray-500 mb-3">Labels</p>
+                                                <div className="flex flex-wrap gap-2">
+                                                    {labels.map(label => (
+                                                        <button
+                                                            key={label.id}
+                                                            onClick={() => setSelectedLabelId(selectedLabelId === label.id ? null : label.id)}
+                                                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${selectedLabelId === label.id
+                                                                ? 'bg-primary text-white scale-105 shadow-md shadow-primary/20'
+                                                                : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
+                                                                }`}
+                                                        >
+                                                            {label.name}
+                                                        </button>
+                                                    ))}
+                                                    {labels.length === 0 && (
+                                                        <p className="text-xs text-gray-400 italic">No labels created yet</p>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            {/* Colors Section */}
+                                            <div>
+                                                <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-gray-500 mb-3">Color</p>
+                                                <div className="grid grid-cols-4 gap-3">
+                                                    <button
+                                                        onClick={() => setSelectedColor(null)}
+                                                        className={`w-full aspect-square rounded-xl border-2 transition-all flex items-center justify-center ${selectedColor === null
+                                                            ? 'border-primary bg-primary/5'
+                                                            : 'border-transparent bg-gray-100 dark:bg-gray-800 shadow-inner'
+                                                            }`}
+                                                        title="All colors"
+                                                    >
+                                                        <FilterX size={16} className={selectedColor === null ? 'text-primary' : 'text-gray-400'} />
+                                                    </button>
+                                                    {noteColors.map(color => (
+                                                        <button
+                                                            key={color.value}
+                                                            onClick={() => setSelectedColor(selectedColor === color.value ? null : color.value)}
+                                                            className={`w-full aspect-square rounded-xl border-2 transition-all ${selectedColor === color.value
+                                                                ? 'border-primary ring-2 ring-primary/20 scale-110'
+                                                                : 'border-transparent'
+                                                                } ${color.color}`}
+                                                            title={color.label}
+                                                        />
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </>
+                            )}
+                        </div>
                     </div>
                 </div>
 
