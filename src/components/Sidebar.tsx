@@ -8,11 +8,16 @@ import {
     Trash2,
     Settings,
     Plus,
-    LogOut
+    LogOut,
+    X
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
-const Sidebar: React.FC = () => {
+interface SidebarProps {
+    onClose?: () => void;
+}
+
+const Sidebar: React.FC<SidebarProps> = ({ onClose }) => {
     const { logout, user } = useAuth();
 
     const navItems = [
@@ -22,15 +27,29 @@ const Sidebar: React.FC = () => {
         { icon: Trash2, label: 'Trash', path: '/trash' },
     ];
 
+    const handleNavClick = () => {
+        if (window.innerWidth < 768 && onClose) {
+            onClose();
+        }
+    };
+
     return (
         <aside className="w-64 bg-slate-50/50 dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 h-screen sticky top-0 flex flex-col transition-colors duration-200">
-            <div className="p-6">
+            <div className="p-6 flex items-center justify-between">
                 <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
                     {/* <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center text-primary shadow-sm rotate-3">
                         <StickyNote size={24} fill="currentColor" fillOpacity={0.2} />
                     </div> */}
                     <span>Homa<span className="text-primary">.</span></span>
                 </h1>
+                {onClose && (
+                    <button
+                        onClick={onClose}
+                        className="md:hidden p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                    >
+                        <X size={20} />
+                    </button>
+                )}
             </div>
 
             <nav className="flex-1 px-3 space-y-1">
@@ -38,6 +57,7 @@ const Sidebar: React.FC = () => {
                     <NavLink
                         key={item.path}
                         to={item.path}
+                        onClick={handleNavClick}
                         className={({ isActive }) => `
                             flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200
                             ${isActive
@@ -60,6 +80,7 @@ const Sidebar: React.FC = () => {
                     </div>
                     <NavLink
                         to="/labels"
+                        onClick={handleNavClick}
                         className={({ isActive }) => `
                             flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200
                             ${isActive
@@ -77,6 +98,7 @@ const Sidebar: React.FC = () => {
             <div className="p-3 border-t border-gray-100 dark:border-gray-700 space-y-1">
                 <NavLink
                     to="/settings"
+                    onClick={handleNavClick}
                     className={({ isActive }) => `
                         flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200
                         ${isActive
@@ -90,7 +112,10 @@ const Sidebar: React.FC = () => {
                 </NavLink>
 
                 <button
-                    onClick={logout}
+                    onClick={() => {
+                        logout();
+                        handleNavClick();
+                    }}
                     className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 transition-all duration-200"
                 >
                     <LogOut size={20} />
