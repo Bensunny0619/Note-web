@@ -56,6 +56,7 @@ export default function NoteCard({ note, onPin, onArchive, onDelete, isSelected,
     const navigate = useNavigate();
     const [showActions, setShowActions] = useState(false);
     const { playAudio, isPlaying, currentUri } = useAudio();
+    const [previewMedia, setPreviewMedia] = useState<{ type: 'image' | 'drawing', url: string } | null>(null);
 
     const handleClick = () => {
         if (onSelect && isSelected !== undefined) {
@@ -94,6 +95,26 @@ export default function NoteCard({ note, onPin, onArchive, onDelete, isSelected,
             playAudio(audioUrl, {
                 noteId: note.id,
                 title: note.title || 'Audio Note',
+            });
+        }
+    };
+
+    const handleImageClick = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (noteImages.length > 0) {
+            setPreviewMedia({
+                type: 'image',
+                url: resolveMediaUrl(noteImages[0].image_url)
+            });
+        }
+    };
+
+    const handleDrawingClick = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (noteDrawings.length > 0) {
+            setPreviewMedia({
+                type: 'drawing',
+                url: resolveMediaUrl(noteDrawings[0].drawing_url)
             });
         }
     };
@@ -250,30 +271,38 @@ export default function NoteCard({ note, onPin, onArchive, onDelete, isSelected,
                     <div className="flex items-center justify-between">
                         <div className="flex gap-2.5">
                             {noteImages.length > 0 && (
-                                <div className="flex items-center text-gray-400" title={`${noteImages.length} images`}>
+                                <button
+                                    onClick={handleImageClick}
+                                    className="flex items-center text-gray-400 hover:text-primary hover:scale-110 transition-all duration-200"
+                                    title={`View ${noteImages.length} image${noteImages.length > 1 ? 's' : ''}`}
+                                >
                                     <ImageIcon className="w-3.5 h-3.5" />
                                     <span className="text-[10px] ml-1 font-bold">{noteImages.length}</span>
-                                </div>
+                                </button>
                             )}
                             {noteAudio.length > 0 && (
                                 <button
                                     onClick={handleAudioClick}
                                     className={`flex items-center transition-all duration-200 ${isPlaying && currentUri === resolveMediaUrl(noteAudio[0].audio_url)
-                                            ? 'text-primary scale-110'
-                                            : 'text-gray-400 hover:text-primary hover:scale-110'
+                                        ? 'text-primary scale-110'
+                                        : 'text-gray-400 hover:text-primary hover:scale-110'
                                         }`}
                                     title="Play audio note"
                                 >
                                     <Mic className={`w-3.5 h-3.5 ${isPlaying && currentUri === resolveMediaUrl(noteAudio[0].audio_url)
-                                            ? 'animate-pulse'
-                                            : ''
+                                        ? 'animate-pulse'
+                                        : ''
                                         }`} />
                                 </button>
                             )}
                             {noteDrawings.length > 0 && (
-                                <div className="flex items-center text-gray-400" title="Drawing">
+                                <button
+                                    onClick={handleDrawingClick}
+                                    className="flex items-center text-gray-400 hover:text-primary hover:scale-110 transition-all duration-200"
+                                    title="View drawing"
+                                >
                                     <Edit3 className="w-3.5 h-3.5" />
-                                </div>
+                                </button>
                             )}
                             {(note.reminder || note.reminder_at) && (
                                 <div className="flex items-center text-orange-500/70" title="Reminder set">
@@ -312,6 +341,37 @@ export default function NoteCard({ note, onPin, onArchive, onDelete, isSelected,
                     >
                         <Trash2 className="w-4 h-4" />
                     </button>
+                </div>
+            )}
+
+            {/* Media Preview Modal */}
+            {previewMedia && (
+                <div
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        setPreviewMedia(null);
+                    }}
+                >
+                    <div className="relative max-w-4xl max-h-[90vh] w-full mx-4">
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setPreviewMedia(null);
+                            }}
+                            className="absolute -top-12 right-0 text-white hover:text-gray-300 transition-colors"
+                        >
+                            <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                        </button>
+                        <img
+                            src={previewMedia.url}
+                            alt={previewMedia.type === 'image' ? 'Image preview' : 'Drawing preview'}
+                            className="w-full h-full object-contain rounded-lg"
+                            onClick={(e) => e.stopPropagation()}
+                        />
+                    </div>
                 </div>
             )}
         </div>
