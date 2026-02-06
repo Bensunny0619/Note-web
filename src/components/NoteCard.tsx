@@ -11,6 +11,7 @@ import {
     Check
 } from 'lucide-react';
 import { resolveMediaUrl } from '../utils/media';
+import { useAudio } from '../contexts/AudioContext';
 
 interface Note {
     id: string | number;
@@ -54,6 +55,7 @@ const NOTE_COLORS: Record<string, string> = {
 export default function NoteCard({ note, onPin, onArchive, onDelete, isSelected, onSelect }: NoteCardProps) {
     const navigate = useNavigate();
     const [showActions, setShowActions] = useState(false);
+    const { playAudio, isPlaying, currentUri } = useAudio();
 
     const handleClick = () => {
         if (onSelect && isSelected !== undefined) {
@@ -83,6 +85,17 @@ export default function NoteCard({ note, onPin, onArchive, onDelete, isSelected,
     const handleDelete = (e: React.MouseEvent) => {
         e.stopPropagation();
         onDelete?.(note.id);
+    };
+
+    const handleAudioClick = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (noteAudio.length > 0) {
+            const audioUrl = resolveMediaUrl(noteAudio[0].audio_url);
+            playAudio(audioUrl, {
+                noteId: note.id,
+                title: note.title || 'Audio Note',
+            });
+        }
     };
 
     const colorClass = isSelected
@@ -243,9 +256,19 @@ export default function NoteCard({ note, onPin, onArchive, onDelete, isSelected,
                                 </div>
                             )}
                             {noteAudio.length > 0 && (
-                                <div className="flex items-center text-gray-400" title="Audio note">
-                                    <Mic className="w-3.5 h-3.5" />
-                                </div>
+                                <button
+                                    onClick={handleAudioClick}
+                                    className={`flex items-center transition-all duration-200 ${isPlaying && currentUri === resolveMediaUrl(noteAudio[0].audio_url)
+                                            ? 'text-primary scale-110'
+                                            : 'text-gray-400 hover:text-primary hover:scale-110'
+                                        }`}
+                                    title="Play audio note"
+                                >
+                                    <Mic className={`w-3.5 h-3.5 ${isPlaying && currentUri === resolveMediaUrl(noteAudio[0].audio_url)
+                                            ? 'animate-pulse'
+                                            : ''
+                                        }`} />
+                                </button>
                             )}
                             {noteDrawings.length > 0 && (
                                 <div className="flex items-center text-gray-400" title="Drawing">
