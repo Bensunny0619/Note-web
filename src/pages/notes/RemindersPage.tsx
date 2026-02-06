@@ -10,14 +10,16 @@ interface Note {
     color?: string;
     is_pinned?: boolean;
     is_archived?: boolean;
+    is_deleted?: boolean;
     created_at: string;
     updated_at: string;
     labels?: Array<{ id: number; name: string; color: string }>;
-    checklist_items?: Array<{ id: number; text: string; is_completed: boolean }>;
+    checklist_items?: Array<{ id: number; text: string; is_checked: boolean }>;
     images?: Array<{ id: number; image_url: string }>;
-    audio_recordings?: Array<{ id: number; file_url: string }>;
-    drawings?: Array<{ id: number; image_url: string }>;
+    audio_recordings?: Array<{ id: number; audio_url: string }>;
+    drawings?: Array<{ id: number; drawing_url: string }>;
     reminder?: { remind_at: string } | null;
+    reminder_at?: string | null;
 }
 
 const RemindersPage: React.FC = () => {
@@ -36,13 +38,13 @@ const RemindersPage: React.FC = () => {
 
             // Filter notes that have reminders and are not archived/deleted
             const reminderNotes = data.filter(note =>
-                note.reminder && !note.is_archived && !note.is_deleted
+                (note.reminder || note.reminder_at) && !note.is_archived && !note.is_deleted
             );
 
             // Sort by reminder date (upcoming first)
             const sorted = reminderNotes.sort((a, b) => {
-                const dateA = new Date(a.reminder!.remind_at).getTime();
-                const dateB = new Date(b.reminder!.remind_at).getTime();
+                const dateA = new Date(a.reminder?.remind_at || a.reminder_at).getTime();
+                const dateB = new Date(b.reminder?.remind_at || b.reminder_at).getTime();
                 return dateA - dateB;
             });
 

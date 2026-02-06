@@ -343,12 +343,15 @@ export default function CreateNote() {
                                         <input
                                             type="datetime-local"
                                             value={reminderDate}
-                                            onChange={(e) => {
-                                                setReminderDate(e.target.value);
-                                                setShowReminderPicker(false);
-                                            }}
-                                            className="w-full p-2 rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-700 text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                                            onChange={(e) => setReminderDate(e.target.value)}
+                                            className="w-full p-2 rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-700 text-sm outline-none focus:ring-2 focus:ring-primary/20 mb-3"
                                         />
+                                        <button
+                                            onClick={() => setShowReminderPicker(false)}
+                                            className="w-full py-2 bg-primary text-white text-xs font-bold rounded-lg hover:bg-primary-dark transition-colors"
+                                        >
+                                            Set Reminder
+                                        </button>
                                     </div>
                                 )}
                             </div>

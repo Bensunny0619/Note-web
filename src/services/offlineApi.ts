@@ -135,6 +135,9 @@ export const getNotes = async (searchQuery?: string, labelId?: number): Promise<
                     const localAudio = localNote.data.audio_recordings || localNote.data.audioRecordings || [];
                     if (localAudio.length > 0) enrichedData.audio_recordings = localAudio;
 
+                    if (localNote.data.reminder) enrichedData.reminder = localNote.data.reminder;
+                    if (localNote.data.reminder_at) enrichedData.reminder_at = localNote.data.reminder_at;
+
                     mergedMap.set(serverMatch.id, {
                         ...serverMatch,
                         data: enrichedData,
@@ -207,7 +210,7 @@ export const createNote = async (payload: any): Promise<any> => {
             ...item,
             id: item.id || `temp_check_${Date.now()}_${Math.random()}`
         })),
-        reminder: null,
+        reminder: payload.reminder_at ? { remind_at: payload.reminder_at } : null,
     };
 
     const { audio_uri, drawing_uri, ...noteData } = payload;
@@ -256,6 +259,8 @@ export const updateNote = async (id: string | number, payload: any): Promise<any
         const updatedData = {
             ...cached.data,
             ...noteData,
+            // Normalize reminder for immediate UI feedback
+            reminder: noteData.reminder_at ? { remind_at: noteData.reminder_at } : noteData.reminder || cached.data.reminder,
             // Only update media in cache if provided
             ...(audio_uri ? { audio_recordings: [{ id: `temp_audio_${Date.now()}`, audio_url: audio_uri }] } : {}),
             ...(drawing_uri ? { drawings: [{ id: `temp_drawing_${Date.now()}`, drawing_url: drawing_uri }] } : {}),
@@ -686,6 +691,18 @@ export const processSyncQueue = async () => {
 
                         await removeCachedNote(oldId);
 
+                        // Sync reminder if present (Backend ignores reminder_at on note create)
+                        if (op.payload.reminder_at) {
+                            try {
+                                await api.post(`/notes/${newId}/reminder`, { remind_at: op.payload.reminder_at });
+                                // Re-fetch to get full reminder object
+                                const refreshed = await api.get(`/notes/${newId}`);
+                                await addCachedNote({ id: newId, data: refreshed.data.data || refreshed.data, locallyModified: false });
+                            } catch (e) {
+                                console.warn(`⚠️ [Sync] Failed to sync reminder for new note ${newId}:`, e);
+                            }
+                        }
+
                         // Propagate ID change to ALL other operations in the queue immediately
                         currentQueue.forEach(otherOp => {
                             if (otherOp.resourceId === oldId) otherOp.resourceId = newId;
@@ -695,10 +712,25 @@ export const processSyncQueue = async () => {
                         break;
                     }
 
-                    case 'UPDATE':
-                        await api.put(`/notes/${op.resourceId}`, op.payload);
+                    case 'UPDATE': {
+                        const updateRes = await api.put(`/notes/${op.resourceId}`, op.payload);
+
+                        // Sync reminder if it was part of the update
+                        if (op.payload.reminder_at) {
+                            try {
+                                await api.post(`/notes/${op.resourceId}/reminder`, { remind_at: op.payload.reminder_at });
+                            } catch (e) {
+                                console.warn(`⚠️ [Sync] Failed to sync reminder update for note ${op.resourceId}:`, e);
+                            }
+                        }
+
+                        // Re-fetch to ensure cache is 100% in sync with server relations
+                        const refreshed = await api.get(`/notes/${op.resourceId}`);
+                        await updateCachedNote(op.resourceId, { data: refreshed.data.data || refreshed.data, locallyModified: false });
+
                         success = true;
                         break;
+                    }
 
                     case 'DELETE':
                         await api.delete(`/notes/${op.resourceId}`);

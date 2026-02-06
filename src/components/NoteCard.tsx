@@ -19,14 +19,16 @@ interface Note {
     color?: string;
     is_pinned?: boolean;
     is_archived?: boolean;
+    is_deleted?: boolean;
     created_at: string;
     updated_at: string;
     labels?: Array<{ id: number; name: string; color: string }>;
-    checklist_items?: Array<{ id: number; text: string; is_checked: boolean }>;
+    checklist_items?: Array<{ id: number; text: string; is_checked: boolean; is_completed?: boolean }>;
     images?: Array<{ id: number; image_url: string }>;
     audio_recordings?: Array<{ id: number; audio_url: string }>;
     drawings?: Array<{ id: number; drawing_url: string }>;
     reminder?: { remind_at: string } | null;
+    reminder_at?: string | null;
 }
 
 interface NoteCardProps {
@@ -173,6 +175,12 @@ export default function NoteCard({ note, onPin, onArchive, onDelete, isSelected,
                             Syncing
                         </div>
                     )}
+                    {(!note.is_archived && !note.is_deleted && (note.reminder || note.reminder_at)) && (
+                        <div className="bg-orange-100 text-orange-600 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 shadow-sm">
+                            <Bell size={10} strokeWidth={3} />
+                            <span>{new Date(note.reminder?.remind_at || note.reminder_at!).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                        </div>
+                    )}
                 </div>
 
                 {/* Title */}
@@ -244,7 +252,7 @@ export default function NoteCard({ note, onPin, onArchive, onDelete, isSelected,
                                     <Edit3 className="w-3.5 h-3.5" />
                                 </div>
                             )}
-                            {note.reminder && (
+                            {(note.reminder || note.reminder_at) && (
                                 <div className="flex items-center text-orange-500/70" title="Reminder set">
                                     <Bell className="w-3.5 h-3.5" />
                                 </div>
