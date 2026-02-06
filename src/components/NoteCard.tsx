@@ -43,13 +43,13 @@ interface NoteCardProps {
 
 const NOTE_COLORS: Record<string, string> = {
     default: 'bg-white dark:bg-gray-800',
-    red: 'bg-red-50 dark:bg-red-900/20',
-    orange: 'bg-orange-50 dark:bg-orange-900/20',
-    yellow: 'bg-yellow-50 dark:bg-yellow-900/20',
-    green: 'bg-green-50 dark:bg-green-900/20',
-    blue: 'bg-blue-50 dark:bg-blue-900/20',
-    purple: 'bg-purple-50 dark:bg-purple-900/20',
-    pink: 'bg-pink-50 dark:bg-pink-900/20',
+    red: 'bg-red-100 dark:bg-red-900/20',
+    orange: 'bg-orange-100 dark:bg-orange-900/20',
+    yellow: 'bg-yellow-100 dark:bg-yellow-900/20',
+    green: 'bg-green-100 dark:bg-green-900/20',
+    blue: 'bg-blue-100 dark:bg-blue-900/20',
+    purple: 'bg-purple-100 dark:bg-purple-900/20',
+    pink: 'bg-pink-100 dark:bg-pink-900/20',
 };
 
 export default function NoteCard({ note, onPin, onArchive, onDelete, isSelected, onSelect }: NoteCardProps) {

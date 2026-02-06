@@ -42,13 +42,13 @@ export default function NotesPage() {
     const [selectedColor, setSelectedColor] = useState<string | null>(null);
 
     const noteColors = [
-        { value: 'red', label: 'Red', color: 'bg-red-50 dark:bg-red-900/20' },
-        { value: 'orange', label: 'Orange', color: 'bg-orange-50 dark:bg-orange-900/20' },
-        { value: 'yellow', label: 'Yellow', color: 'bg-yellow-50 dark:bg-yellow-900/20' },
-        { value: 'green', label: 'Green', color: 'bg-green-50 dark:bg-green-900/20' },
-        { value: 'blue', label: 'Blue', color: 'bg-blue-50 dark:bg-blue-900/20' },
-        { value: 'purple', label: 'Purple', color: 'bg-purple-50 dark:bg-purple-900/20' },
-        { value: 'pink', label: 'Pink', color: 'bg-pink-50 dark:bg-pink-900/20' },
+        { value: 'red', label: 'Red', color: 'bg-red-100 dark:bg-red-900/20' },
+        { value: 'orange', label: 'Orange', color: 'bg-orange-100 dark:bg-orange-900/20' },
+        { value: 'yellow', label: 'Yellow', color: 'bg-yellow-100 dark:bg-yellow-900/20' },
+        { value: 'green', label: 'Green', color: 'bg-green-100 dark:bg-green-900/20' },
+        { value: 'blue', label: 'Blue', color: 'bg-blue-100 dark:bg-blue-900/20' },
+        { value: 'purple', label: 'Purple', color: 'bg-purple-100 dark:bg-purple-900/20' },
+        { value: 'pink', label: 'Pink', color: 'bg-pink-100 dark:bg-pink-900/20' },
     ];
 
     useEffect(() => {

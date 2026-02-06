@@ -7,7 +7,7 @@ interface LayoutProps {
 
 const Layout: React.FC<LayoutProps> = ({ children }) => {
     return (
-        <div className="flex min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors duration-200">
+        <div className="flex min-h-screen bg-slate-50 dark:bg-gray-900 transition-colors duration-200">
             {/* Sidebar - hidden on mobile, need drawer for that later */}
             <div className="hidden md:block">
                 <Sidebar />

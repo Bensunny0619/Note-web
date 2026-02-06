@@ -9,13 +9,13 @@ import DrawingCanvas from '../../components/DrawingCanvas';
 
 const COLORS = [
     { name: 'Default', value: 'default', class: 'bg-white dark:bg-gray-800' },
-    { name: 'Red', value: 'red', class: 'bg-red-50 dark:bg-red-900/20' },
-    { name: 'Orange', value: 'orange', class: 'bg-orange-50 dark:bg-orange-900/20' },
-    { name: 'Yellow', value: 'yellow', class: 'bg-yellow-50 dark:bg-yellow-900/20' },
-    { name: 'Green', value: 'green', class: 'bg-green-50 dark:bg-green-900/20' },
-    { name: 'Blue', value: 'blue', class: 'bg-blue-50 dark:bg-blue-900/20' },
-    { name: 'Purple', value: 'purple', class: 'bg-purple-50 dark:bg-purple-900/20' },
-    { name: 'Pink', value: 'pink', class: 'bg-pink-50 dark:bg-pink-900/20' },
+    { name: 'Red', value: 'red', class: 'bg-red-100 dark:bg-red-900/20' },
+    { name: 'Orange', value: 'orange', class: 'bg-orange-100 dark:bg-orange-900/20' },
+    { name: 'Yellow', value: 'yellow', class: 'bg-yellow-100 dark:bg-yellow-900/20' },
+    { name: 'Green', value: 'green', class: 'bg-green-100 dark:bg-green-900/20' },
+    { name: 'Blue', value: 'blue', class: 'bg-blue-100 dark:bg-blue-900/20' },
+    { name: 'Purple', value: 'purple', class: 'bg-purple-100 dark:bg-purple-900/20' },
+    { name: 'Pink', value: 'pink', class: 'bg-pink-100 dark:bg-pink-900/20' },
 ];
 
 interface ChecklistItemData {
