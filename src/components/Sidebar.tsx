@@ -26,10 +26,10 @@ const Sidebar: React.FC = () => {
         <aside className="w-64 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 h-screen sticky top-0 flex flex-col transition-colors duration-200">
             <div className="p-6">
                 <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                    <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center text-primary shadow-sm rotate-3">
+                    {/* <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center text-primary shadow-sm rotate-3">
                         <StickyNote size={24} fill="currentColor" fillOpacity={0.2} />
-                    </div>
-                    <span>Homa<span className="text-primary">Notes</span></span>
+                    </div> */}
+                    <span>Homa<span className="text-primary">.</span></span>
                 </h1>
             </div>
 

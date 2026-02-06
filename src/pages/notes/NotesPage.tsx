@@ -219,7 +219,7 @@ export default function NotesPage() {
                                         </div>
                                     )}
                                     <h1 className="text-3xl font-black text-gray-900 dark:text-white tracking-tight">
-                                        Homa Notes
+                                        Homa<span className="text-primary">.</span>
                                     </h1>
                                 </div>
                                 <p className="text-sm text-gray-500 font-medium">Capture your thoughts instantly</p>
