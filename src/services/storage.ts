@@ -3,14 +3,14 @@ import { openDB, DBSchema, IDBPDatabase } from 'idb';
 // Define the database schema
 interface NoteAppDB extends DBSchema {
     notes: {
-        key: string | number;
+        key: any;
         value: CachedNote;
-        indexes: { 'by-modified': boolean };
+        indexes: { 'by-modified': any };
     };
     syncQueue: {
-        key: number;
+        key: any;
         value: SyncOperation;
-        indexes: { 'by-timestamp': number };
+        indexes: { 'by-timestamp': any };
     };
 }
 
@@ -69,7 +69,18 @@ export async function getCachedNotes(): Promise<CachedNote[]> {
 
 export async function getCachedNoteById(id: string | number): Promise<CachedNote | undefined> {
     const db = await getDB();
-    return db.get('notes', id);
+    let note = await db.get('notes', id);
+
+    // Fallback: If not found and id is a numeric string, try as number
+    if (!note && typeof id === 'string' && !isNaN(Number(id))) {
+        note = await db.get('notes', Number(id));
+    }
+    // Fallback: If not found and id is a number, try as string
+    if (!note && typeof id === 'number') {
+        note = await db.get('notes', id.toString());
+    }
+
+    return note;
 }
 
 export async function addCachedNote(note: CachedNote): Promise<void> {

@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { getNote, updateNote, deleteNote, archiveNote, uploadImage } from '../../services/offlineApi';
 import { useLabels } from '../../contexts/LabelContext';
 import { Plus, ImageIcon, Mic, Edit3, Bell, ChevronLeft, Trash2, Archive, Tag, X as XIcon } from 'lucide-react';
+import { resolveMediaUrl } from '../../utils/media';
 import ChecklistItem from '../../components/ChecklistItem';
 import AudioRecorder from '../../components/AudioRecorder';
 import DrawingCanvas from '../../components/DrawingCanvas';
@@ -21,7 +22,7 @@ const COLORS = [
 interface ChecklistItemData {
     id: string;
     content: string;
-    is_completed: boolean;
+    is_checked: boolean;
 }
 
 export default function EditNote() {
@@ -69,23 +70,30 @@ export default function EditNote() {
                 setContent(note.content || '');
                 setColor(note.color || 'default');
 
-                if (note.checklist_items) {
-                    setChecklistItems(note.checklist_items.map((item: any) => ({
-                        id: item.id?.toString() || Math.random().toString(),
-                        content: item.text,
-                        is_completed: item.is_completed
-                    })));
+                const items = note.checklist_items || note.checklistItems || [];
+                setChecklistItems(items.map((item: any) => ({
+                    id: item.id?.toString() || Math.random().toString(),
+                    content: item.text || '',
+                    is_checked: !!(item.is_checked || item.is_completed)
+                })));
+
+                if (note.labels || note.label_ids) {
+                    setSelectedLabels((note.labels || []).map((l: any) => l.id) || note.label_ids || []);
                 }
 
-                if (note.labels) setSelectedLabels(note.labels.map((l: any) => l.id));
-                if (note.reminder) setReminderDate(note.reminder.remind_at?.slice(0, 16) || '');
+                const remindAt = note.reminder?.remind_at || note.reminder_at;
+                if (remindAt) setReminderDate(remindAt.slice(0, 16));
 
                 if (note.images) setExistingImages(note.images);
-                if (note.audio_recordings?.length > 0) {
-                    setAudioUri(note.audio_recordings[0].file_url);
+
+                const recordings = note.audio_recordings || note.audioRecordings || [];
+                if (recordings.length > 0) {
+                    setAudioUri(resolveMediaUrl(recordings[0].audio_url));
                     setShowAudioRecorder(true);
                 }
-                if (note.drawings?.length > 0) setDrawingUri(note.drawings[0].image_url);
+
+                const drawList = note.drawings || [];
+                if (drawList.length > 0) setDrawingUri(resolveMediaUrl(drawList[0].drawing_url));
 
             } else {
                 setError('Note not found');
@@ -112,7 +120,7 @@ export default function EditNote() {
                     .filter(item => item.content.trim() !== '')
                     .map(item => ({
                         text: item.content.trim(),
-                        is_completed: item.is_completed
+                        is_checked: item.is_checked
                     })),
                 label_ids: selectedLabels,
                 reminder_at: reminderDate || null,
@@ -181,13 +189,13 @@ export default function EditNote() {
     const addChecklistItem = () => {
         setChecklistItems([
             ...checklistItems,
-            { id: Date.now().toString(), content: '', is_completed: false }
+            { id: Date.now().toString(), content: '', is_checked: false }
         ]);
     };
 
     const toggleChecklistItem = (id: string) => {
         setChecklistItems(checklistItems.map(item =>
-            item.id === id ? { ...item, is_completed: !item.is_completed } : item
+            item.id === id ? { ...item, is_checked: !item.is_checked } : item
         ));
     };
 
@@ -274,7 +282,7 @@ export default function EditNote() {
                         <div className="flex flex-wrap gap-2 p-4 bg-black/5 dark:bg-white/5">
                             {existingImages.map((img, idx) => (
                                 <div key={idx} className="relative group w-32 h-32 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700">
-                                    <img src={img.image_url} alt="" className="w-full h-full object-cover" />
+                                    <img src={resolveMediaUrl(img.image_url)} alt="" className="w-full h-full object-cover" />
                                 </div>
                             ))}
                             {newImages.map((img, idx) => (
@@ -293,13 +301,23 @@ export default function EditNote() {
 
                     {drawingUri && (
                         <div className="relative group p-4 bg-black/5 dark:bg-white/5 border-b border-black/5 dark:border-white/5">
-                            <div className="relative w-full aspect-video rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700 bg-white">
-                                <img src={drawingUri} alt="Drawing" className="w-full h-full object-contain" />
+                            <div className="relative w-full aspect-video rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700 bg-white shadow-inner">
+                                <img
+                                    src={resolveMediaUrl(drawingUri)}
+                                    alt="Drawing"
+                                    className="w-full h-full object-contain transition-opacity duration-300"
+                                    onLoad={(e) => (e.currentTarget.style.opacity = '1')}
+                                    onError={(e) => {
+                                        e.currentTarget.style.display = 'none';
+                                        e.currentTarget.parentElement!.style.display = 'none';
+                                    }}
+                                    style={{ opacity: 0 }}
+                                />
                                 <div className="absolute top-2 right-2 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <button onClick={() => setShowDrawingCanvas(true)} className="p-2 bg-black/50 text-white rounded-lg hover:bg-black/70">
+                                    <button onClick={() => setShowDrawingCanvas(true)} className="p-2 bg-black/50 text-white rounded-lg hover:bg-black/70 shadow-lg backdrop-blur-sm">
                                         <Edit3 size={16} />
                                     </button>
-                                    <button onClick={() => setDrawingUri(null)} className="p-2 bg-red-500/80 text-white rounded-lg hover:bg-red-500">
+                                    <button onClick={() => setDrawingUri(null)} className="p-2 bg-red-500/80 text-white rounded-lg hover:bg-red-500 shadow-lg backdrop-blur-sm">
                                         <XIcon size={16} />
                                     </button>
                                 </div>

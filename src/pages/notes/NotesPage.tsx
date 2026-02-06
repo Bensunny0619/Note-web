@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getNotes, pinNote, unpinNote, archiveNote, deleteNote } from '../../services/offlineApi';
+import { getNotes, pinNote, unpinNote, archiveNote, deleteNote, bulkDeleteNotes, getSyncQueue } from '../../services/offlineApi';
 import NoteCard from '../../components/NoteCard';
 import SearchBar from '../../components/SearchBar';
-import { Plus, LayoutGrid, List, SlidersHorizontal, Loader2, StickyNote } from 'lucide-react';
+import { Plus, LayoutGrid, List, SlidersHorizontal, Loader2, StickyNote, Trash2, X, CheckSquare, Square } from 'lucide-react';
 
 interface Note {
     id: string | number;
@@ -12,6 +12,7 @@ interface Note {
     color?: string;
     is_pinned?: boolean;
     is_archived?: boolean;
+    is_deleted?: boolean;
     created_at: string;
     updated_at: string;
     labels?: Array<{ id: number; name: string; color: string }>;
@@ -30,9 +31,17 @@ export default function NotesPage() {
     const [error, setError] = useState('');
     const [searchQuery, setSearchQuery] = useState('');
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+    const [selectedIds, setSelectedIds] = useState<(string | number)[]>([]);
+    const [syncQueueLength, setSyncQueueLength] = useState(0);
 
     useEffect(() => {
         fetchNotes();
+        // Check sync queue every 5 seconds
+        const interval = setInterval(async () => {
+            const queue = await getSyncQueue();
+            setSyncQueueLength(queue.length);
+        }, 5000);
+        return () => clearInterval(interval);
     }, []);
 
     useEffect(() => {
@@ -103,20 +112,89 @@ export default function NotesPage() {
         }
     };
 
+    const toggleSelection = useCallback((id: string | number) => {
+        setSelectedIds(prev =>
+            prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+        );
+    }, []);
+
+    const clearSelection = () => setSelectedIds([]);
+
+    const handleBulkDelete = async () => {
+        if (!selectedIds.length) return;
+        if (window.confirm(`Delete ${selectedIds.length} notes?`)) {
+            try {
+                await bulkDeleteNotes(selectedIds);
+                setSelectedIds([]);
+                await fetchNotes();
+            } catch (err) {
+                console.error('Bulk delete failed:', err);
+            }
+        }
+    };
+
+    const selectAll = () => {
+        if (selectedIds.length === filteredNotes.length) {
+            setSelectedIds([]);
+        } else {
+            setSelectedIds(filteredNotes.map(n => n.id));
+        }
+    };
+
     return (
         <div className="min-h-screen bg-transparent">
             <div className="max-w-7xl mx-auto px-6 py-10">
                 {/* Header Section */}
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12">
-                    <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center text-primary shadow-sm rotate-3">
-                            <StickyNote size={24} fill="currentColor" fillOpacity={0.2} />
+                    {selectedIds.length > 0 ? (
+                        <div className="flex items-center gap-6 animate-in slide-in-from-top-4 duration-300">
+                            <div className="flex items-center gap-3">
+                                <button
+                                    onClick={clearSelection}
+                                    className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-colors text-gray-500"
+                                >
+                                    <X size={24} />
+                                </button>
+                                <h2 className="text-2xl font-bold text-primary">{selectedIds.length} selected</h2>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={selectAll}
+                                    className="flex items-center gap-2 px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-colors text-gray-600 dark:text-gray-400 font-medium"
+                                >
+                                    {selectedIds.length === filteredNotes.length ? <CheckSquare size={20} /> : <Square size={20} />}
+                                    <span>{selectedIds.length === filteredNotes.length ? 'Deselect All' : 'Select All'}</span>
+                                </button>
+                                <button
+                                    onClick={handleBulkDelete}
+                                    className="flex items-center gap-2 px-4 py-2 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 rounded-xl transition-all font-bold"
+                                >
+                                    <Trash2 size={20} />
+                                    <span>Delete</span>
+                                </button>
+                            </div>
                         </div>
-                        <div>
-                            <h1 className="text-3xl font-extrabold text-gray-900 dark:text-white tracking-tight">Homa Notes</h1>
-                            <p className="text-sm text-gray-500 font-medium">Capture your thoughts instantly</p>
+                    ) : (
+                        <div className="flex items-center gap-4">
+                            <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center text-primary shadow-sm rotate-3">
+                                <StickyNote size={24} fill="currentColor" fillOpacity={0.2} />
+                            </div>
+                            <div>
+                                <div className="flex items-center gap-4">
+                                    {syncQueueLength > 0 && (
+                                        <div className="flex items-center gap-2 px-3 py-1.5 bg-orange-50 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400 rounded-lg text-xs font-bold animate-pulse">
+                                            <Loader2 size={14} className="animate-spin" />
+                                            <span>Syncing {syncQueueLength} items...</span>
+                                        </div>
+                                    )}
+                                    <h1 className="text-3xl font-black text-gray-900 dark:text-white tracking-tight">
+                                        Homa Notes
+                                    </h1>
+                                </div>
+                                <p className="text-sm text-gray-500 font-medium">Capture your thoughts instantly</p>
+                            </div>
                         </div>
-                    </div>
+                    )}
 
                     <div className="flex items-center gap-3">
                         <SearchBar onSearch={setSearchQuery} />
@@ -196,6 +274,8 @@ export default function NotesPage() {
                                 onPin={handlePin}
                                 onArchive={handleArchive}
                                 onDelete={handleDelete}
+                                isSelected={selectedIds.includes(note.id)}
+                                onSelect={() => toggleSelection(note.id)}
                             />
                         ))}
                     </div>
@@ -203,7 +283,7 @@ export default function NotesPage() {
             </div>
 
             {/* Floating Action Button */}
-            {!loading && filteredNotes.length > 0 && (
+            {!loading && filteredNotes.length > 0 && selectedIds.length === 0 && (
                 <button
                     onClick={() => navigate('/notes/create')}
                     className="
@@ -221,10 +301,3 @@ export default function NotesPage() {
         </div>
     );
 }
-
-const X = ({ className }: { className?: string }) => (
-    <svg className={className} width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <line x1="18" y1="6" x2="6" y2="18"></line>
-        <line x1="6" y1="6" x2="18" y2="18"></line>
-    </svg>
-);

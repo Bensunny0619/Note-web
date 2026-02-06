@@ -21,7 +21,6 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ onAudioRecorded, onAudioD
     useEffect(() => {
         return () => {
             if (timerRef.current) clearInterval(timerRef.current);
-            if (audioUri && !existingAudioUri) URL.revokeObjectURL(audioUri);
         };
     }, []);
 
@@ -38,11 +37,17 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ onAudioRecorded, onAudioD
                 }
             };
 
-            mediaRecorder.onstop = () => {
+            mediaRecorder.onstop = async () => {
                 const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
-                const url = URL.createObjectURL(audioBlob);
-                setAudioUri(url);
-                onAudioRecorded(url);
+
+                // Convert blob to Data URL (Base64) for persistence in IndexedDB
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                    const base64Data = reader.result as string;
+                    setAudioUri(base64Data);
+                    onAudioRecorded(base64Data);
+                };
+                reader.readAsDataURL(audioBlob);
 
                 // Stop all tracks to release microphone
                 stream.getTracks().forEach(track => track.stop());

@@ -4,7 +4,7 @@ import { Check, X } from 'lucide-react';
 interface ChecklistItemProps {
     id: string;
     content: string;
-    is_completed: boolean;
+    is_checked: boolean;
     onToggle: (id: string) => void;
     onRemove: (id: string) => void;
     onChange: (id: string, content: string) => void;
@@ -15,7 +15,7 @@ interface ChecklistItemProps {
 const ChecklistItem: React.FC<ChecklistItemProps> = ({
     id,
     content,
-    is_completed,
+    is_checked,
     onToggle,
     onRemove,
     onChange,
@@ -33,12 +33,12 @@ const ChecklistItem: React.FC<ChecklistItemProps> = ({
             <button
                 type="button"
                 onClick={() => onToggle(id)}
-                className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${is_completed
+                className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${is_checked
                     ? 'bg-primary border-primary text-white'
                     : 'border-gray-300 dark:border-gray-600 hover:border-primary'
                     }`}
             >
-                {is_completed && <Check size={14} />}
+                {is_checked && <Check size={14} />}
             </button>
 
             <input
@@ -48,7 +48,7 @@ const ChecklistItem: React.FC<ChecklistItemProps> = ({
                 onKeyDown={handleKeyDown}
                 placeholder="List item..."
                 autoFocus={autoFocus}
-                className={`flex-1 bg-transparent border-none focus:ring-0 p-0 text-sm ${is_completed ? 'text-gray-400 line-through' : 'text-gray-900 dark:text-gray-100'
+                className={`flex-1 bg-transparent border-none focus:ring-0 p-0 text-sm ${is_checked ? 'text-gray-400 line-through' : 'text-gray-900 dark:text-gray-100'
                     }`}
             />
 

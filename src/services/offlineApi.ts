@@ -13,6 +13,8 @@ import {
     generateUUID,
 } from './storage';
 
+export { getSyncQueue };
+
 let isOnlineGlobal = true;
 
 export const setGlobalOnlineStatus = (online: boolean) => {
@@ -22,12 +24,52 @@ export const setGlobalOnlineStatus = (online: boolean) => {
     }
 };
 
-const fileToDataURL = (file: File): Promise<string> => {
+const fileToDataURL = (file: File | Blob): Promise<string> => {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(reader.result as string);
         reader.onerror = reject;
         reader.readAsDataURL(file);
+    });
+};
+
+const compressImage = (file: File, maxWidth = 1200, quality = 0.7): Promise<File> => {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = (event) => {
+            const img = new Image();
+            img.src = event.target?.result as string;
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                let width = img.width;
+                let height = img.height;
+
+                if (width > maxWidth) {
+                    height = (maxWidth / width) * height;
+                    width = maxWidth;
+                }
+
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx?.drawImage(img, 0, 0, width, height);
+
+                canvas.toBlob(
+                    (blob) => {
+                        if (blob) {
+                            resolve(new File([blob], file.name, { type: 'image/jpeg' }));
+                        } else {
+                            reject(new Error('Canvas toBlob failed'));
+                        }
+                    },
+                    'image/jpeg',
+                    quality
+                );
+            };
+            img.onerror = reject;
+        };
+        reader.onerror = reject;
     });
 };
 
@@ -45,7 +87,11 @@ export const getNotes = async (searchQuery?: string, labelId?: number): Promise<
             console.log(`🌐 Fetched ${notes.length} notes from server`);
 
             const currentCached = await getCachedNotes();
-            const localOnlyNotes = currentCached.filter(n => n.locallyModified);
+            const syncQueue = await getSyncQueue();
+            const pendingResourceIds = new Set(syncQueue.map(op => op.resourceId));
+
+            // Treat locallyModified OR notes with pending sync ops as "localOnly" for merge logic
+            const localOnlyNotes = currentCached.filter(n => n.locallyModified || pendingResourceIds.has(n.id));
 
             const serverNotesMapped: CachedNote[] = notes.map((note: any) => ({
                 id: note.id,
@@ -54,15 +100,56 @@ export const getNotes = async (searchQuery?: string, labelId?: number): Promise<
                 lastSyncedAt: new Date().toISOString(),
             }));
 
-            const mergedNotes = [...serverNotesMapped];
+            // Use a Map for efficient deduplication and merging
+            const mergedMap = new Map<string | number, CachedNote>();
 
+            // 1. Start with server notes
+            serverNotesMapped.forEach(sn => mergedMap.set(sn.id, sn));
+
+            // 2. Merge local modifications
             localOnlyNotes.forEach(localNote => {
-                const index = mergedNotes.findIndex(n => n.id === localNote.id);
-                if (index !== -1) {
-                    mergedNotes[index] = localNote;
-                } else {
-                    mergedNotes.unshift(localNote);
+                let serverMatch = mergedMap.get(localNote.id);
+
+                if (!serverMatch) {
+                    for (const [, sn] of mergedMap.entries()) {
+                        if (sn.data.title === localNote.data.title &&
+                            sn.data.content === localNote.data.content) {
+                            serverMatch = sn;
+                            break;
+                        }
+                    }
                 }
+
+                if (serverMatch) {
+                    // Enrich server note with local modifications
+                    const enrichedData = {
+                        ...serverMatch.data,
+                        ...localNote.data,
+                        updated_at: localNote.data.updated_at || serverMatch.data.updated_at
+                    };
+
+                    if (localNote.data.checklist_items?.length > 0) enrichedData.checklist_items = localNote.data.checklist_items;
+                    if (localNote.data.drawings?.length > 0) enrichedData.drawings = localNote.data.drawings;
+                    if (localNote.data.images?.length > 0) enrichedData.images = localNote.data.images;
+
+                    const localAudio = localNote.data.audio_recordings || localNote.data.audioRecordings || [];
+                    if (localAudio.length > 0) enrichedData.audio_recordings = localAudio;
+
+                    mergedMap.set(serverMatch.id, {
+                        ...serverMatch,
+                        data: enrichedData,
+                        locallyModified: localNote.locallyModified || pendingResourceIds.has(localNote.id)
+                    });
+                } else {
+                    mergedMap.set(localNote.id, localNote);
+                }
+            });
+
+            const mergedNotes = Array.from(mergedMap.values());
+            mergedNotes.sort((a, b) => {
+                if (a.data.is_pinned && !b.data.is_pinned) return -1;
+                if (!a.data.is_pinned && b.data.is_pinned) return 1;
+                return new Date(b.data.created_at).getTime() - new Date(a.data.created_at).getTime();
             });
 
             await setCachedNotes(mergedNotes);
@@ -79,7 +166,6 @@ export const getNotes = async (searchQuery?: string, labelId?: number): Promise<
 
 const getCachedNotesData = async (): Promise<any[]> => {
     const cached = await getCachedNotes();
-    console.log(`💾 Retrieved ${cached.length} notes from cache`);
     return cached.map(c => c.data);
 };
 
@@ -113,11 +199,14 @@ export const createNote = async (payload: any): Promise<any> => {
         updated_at: new Date().toISOString(),
         is_pinned: false,
         is_archived: false,
-        checklist_items: payload.checklist_items || [],
         labels: payload.labels || [],
         images: payload.images || [],
-        audio_recordings: payload.audio_recordings || [],
-        drawings: payload.drawings || (payload.drawing_uri ? [{ id: `temp_drawing_${Date.now()}`, image_url: payload.drawing_uri }] : []),
+        audio_recordings: payload.audio_recordings || (payload.audio_uri ? [{ id: `temp_audio_${Date.now()}`, audio_url: payload.audio_uri }] : []),
+        drawings: payload.drawings || (payload.drawing_uri ? [{ id: `temp_drawing_${Date.now()}`, drawing_url: payload.drawing_uri }] : []),
+        checklist_items: (payload.checklist_items || []).map((item: any) => ({
+            ...item,
+            id: item.id || `temp_check_${Date.now()}_${Math.random()}`
+        })),
         reminder: null,
     };
 
@@ -160,11 +249,16 @@ export const createNote = async (payload: any): Promise<any> => {
 };
 
 export const updateNote = async (id: string | number, payload: any): Promise<any> => {
+    const { audio_uri, drawing_uri, ...noteData } = payload;
+
     const cached = await getCachedNoteById(id);
     if (cached) {
         const updatedData = {
             ...cached.data,
-            ...payload,
+            ...noteData,
+            // Only update media in cache if provided
+            ...(audio_uri ? { audio_recordings: [{ id: `temp_audio_${Date.now()}`, audio_url: audio_uri }] } : {}),
+            ...(drawing_uri ? { drawings: [{ id: `temp_drawing_${Date.now()}`, drawing_url: drawing_uri }] } : {}),
             updated_at: new Date().toISOString(),
         };
 
@@ -180,20 +274,66 @@ export const updateNote = async (id: string | number, payload: any): Promise<any
         type: 'UPDATE',
         resourceType: 'note',
         resourceId: id,
-        payload,
+        payload: noteData,
     });
 
+    if (audio_uri && audio_uri.startsWith('data:')) {
+        await enqueueOperation({
+            type: 'CREATE_AUDIO',
+            resourceType: 'audio',
+            resourceId: id,
+            payload: { noteId: id, audioFile: { uri: audio_uri } },
+        });
+    }
+
+    if (drawing_uri && drawing_uri.startsWith('data:')) {
+        await enqueueOperation({
+            type: 'CREATE_DRAWING',
+            resourceType: 'drawing',
+            resourceId: id,
+            payload: { noteId: id, drawing_uri },
+        });
+    }
+
+    processSyncQueue();
     return cached?.data;
 };
 
 export const deleteNote = async (id: string | number): Promise<void> => {
     const cached = await getCachedNoteById(id);
-    if (cached) {
-        await updateCachedNote(id, {
-            data: { ...cached.data, is_deleted: true },
-            locallyModified: true,
+    if (!cached) {
+        console.error('❌ [Delete] Failed: Note not found in cache. ID:', id, 'Type:', typeof id);
+        return;
+    }
+
+    // 1. Mark as deleted locally for immediate UI response
+    await updateCachedNote(id, {
+        data: { ...cached.data, is_deleted: true },
+        locallyModified: true,
+    });
+    console.log('🗑️ Note soft-deleted locally:', id);
+    console.log('📦 Current note state in cache:', cached.data);
+
+    const idStr = id.toString();
+    if (idStr.startsWith('offline_')) {
+        // If it's an offline note, just purge it from everywhere
+        await permanentlyDeleteNote(id);
+    } else {
+        // Enqueue a DELETE operation for the server
+        await enqueueOperation({
+            type: 'DELETE',
+            resourceType: 'note',
+            resourceId: id,
+            payload: {},
         });
-        console.log('🗑️ Note soft-deleted locally:', id);
+        processSyncQueue();
+    }
+};
+
+export const bulkDeleteNotes = async (ids: (string | number)[]): Promise<void> => {
+    console.log(`🗑️ Bulk deleting ${ids.length} notes...`);
+    for (const id of ids) {
+        await deleteNote(id);
     }
 };
 
@@ -233,6 +373,9 @@ export const pinNote = async (id: string | number): Promise<void> => {
             data: { ...cached.data, is_pinned: true },
             locallyModified: true,
         });
+        console.log('📌 Note pinned locally:', id);
+    } else {
+        console.warn('⚠️ [Pin] Note not found in cache:', id);
     }
 
     await enqueueOperation({
@@ -241,6 +384,7 @@ export const pinNote = async (id: string | number): Promise<void> => {
         resourceId: id,
         payload: {},
     });
+    processSyncQueue();
 };
 
 export const unpinNote = async (id: string | number): Promise<void> => {
@@ -258,6 +402,7 @@ export const unpinNote = async (id: string | number): Promise<void> => {
         resourceId: id,
         payload: {},
     });
+    processSyncQueue();
 };
 
 export const archiveNote = async (id: string | number): Promise<void> => {
@@ -267,6 +412,9 @@ export const archiveNote = async (id: string | number): Promise<void> => {
             data: { ...cached.data, is_archived: true },
             locallyModified: true,
         });
+        console.log('📦 Note archived locally:', id);
+    } else {
+        console.warn('⚠️ [Archive] Note not found in cache:', id);
     }
 
     await enqueueOperation({
@@ -275,6 +423,7 @@ export const archiveNote = async (id: string | number): Promise<void> => {
         resourceId: id,
         payload: {},
     });
+    processSyncQueue();
 };
 
 export const unarchiveNote = async (id: string | number): Promise<void> => {
@@ -292,6 +441,7 @@ export const unarchiveNote = async (id: string | number): Promise<void> => {
         resourceId: id,
         payload: {},
     });
+    processSyncQueue();
 };
 
 export const restoreNote = async (id: string | number): Promise<void> => {
@@ -310,14 +460,28 @@ export const restoreNote = async (id: string | number): Promise<void> => {
         resourceId: id,
         payload: {},
     });
+    processSyncQueue();
 };
 
 // Image operations
 export const uploadImage = async (noteId: string | number, imageFile: File): Promise<void> => {
+    let finalFile = imageFile;
+
+    // Attempt compression for performance
+    try {
+        if (imageFile.type.startsWith('image/') && imageFile.size > 500 * 1024) {
+            console.log(`🖼️ Compressing image: ${(imageFile.size / 1024).toFixed(1)}KB...`);
+            finalFile = await compressImage(imageFile);
+            console.log(`✅ Compressed to: ${(finalFile.size / 1024).toFixed(1)}KB`);
+        }
+    } catch (e) {
+        console.warn('⚠️ Compression failed, uploading original:', e);
+    }
+
     const cached = await getCachedNoteById(noteId);
     if (cached) {
         try {
-            const base64Data = await fileToDataURL(imageFile);
+            const base64Data = await fileToDataURL(finalFile);
             const newImage = {
                 id: `temp_${Date.now()}`,
                 image_url: base64Data,
@@ -337,7 +501,7 @@ export const uploadImage = async (noteId: string | number, imageFile: File): Pro
         type: 'UPLOAD_IMAGE',
         resourceType: 'image',
         resourceId: noteId,
-        payload: { noteId, imageFile },
+        payload: { noteId, imageFile: finalFile },
     });
 
     processSyncQueue();
@@ -351,6 +515,7 @@ export const attachLabel = async (noteId: string | number, labelId: number): Pro
         resourceId: noteId,
         payload: { noteId, labelId },
     });
+    processSyncQueue();
 };
 
 export const detachLabel = async (noteId: string | number, labelId: number): Promise<void> => {
@@ -360,6 +525,7 @@ export const detachLabel = async (noteId: string | number, labelId: number): Pro
         resourceId: noteId,
         payload: { noteId, labelId },
     });
+    processSyncQueue();
 };
 
 // Checklist operations
@@ -375,6 +541,7 @@ export const createChecklistItem = async (
         resourceId: resourceId,
         payload: { noteId, ...payload },
     });
+    processSyncQueue();
 };
 
 export const updateChecklistItem = async (
@@ -387,6 +554,7 @@ export const updateChecklistItem = async (
         resourceId: itemId,
         payload: payload,
     });
+    processSyncQueue();
 };
 
 export const deleteChecklistItem = async (itemId: number | string): Promise<void> => {
@@ -396,6 +564,7 @@ export const deleteChecklistItem = async (itemId: number | string): Promise<void
         resourceId: itemId,
         payload: { itemId },
     });
+    processSyncQueue();
 };
 
 // Reminder operations
@@ -443,113 +612,259 @@ export const processSyncQueue = async () => {
     if (queue.length === 0) return;
 
     isSyncing = true;
-    console.log(`🔄 [Sync] Processing ${queue.length} operations...`);
+    console.log(`🚀 [Sync] Batch processing ${queue.length} operations concurrently...`);
 
-    const completedIds: number[] = [];
+    const currentQueue = [...queue];
+    const completedIds = new Set<number>();
 
-    for (const op of queue) {
-        try {
-            console.log(`📡 [Sync] Processing ${op.type} for ${op.resourceType}:${op.resourceId}`);
+    // 1. Group operations by resource to maintain internal order per resource
+    const groups: { [key: string]: typeof currentQueue } = {};
+    currentQueue.forEach(op => {
+        const key = op.resourceId?.toString() || 'global';
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(op);
+    });
 
-            let success = false;
+    // 2. Process each group in parallel, but operations WITHIN a group sequentially.
+    await Promise.all(Object.values(groups).map(async (groupOps) => {
+        for (const op of groupOps) {
+            // Skip if this operation was already updated/marked by another stream (ID propagation)
+            // or if it depends on a previous operation in this group that failed.
+            try {
+                let success = false;
+                console.log(`📡 [Sync] Stream processing ${op.type} for ${op.resourceId}`);
 
-            switch (op.type) {
-                case 'CREATE':
-                    const createRes = await api.post('/notes', op.payload);
-                    const serverNote = createRes.data.data || createRes.data;
-                    await removeCachedNote(op.resourceId);
-                    await addCachedNote({
-                        id: serverNote.id,
-                        data: serverNote,
-                        locallyModified: false
-                    });
-                    success = true;
-                    break;
+                // Helper to update note cache safely without losing metadata if the response is partial
+                const safeUpdateNoteCache = async (noteId: string | number, serverResponse: any) => {
+                    if (!serverResponse) return;
 
-                case 'UPDATE':
-                    await api.put(`/notes/${op.resourceId}`, op.payload);
-                    success = true;
-                    break;
+                    // If it's a full note (has content or checklist_items or drawings), update it fully
+                    if (serverResponse.id && (serverResponse.checklist_items || serverResponse.checklistItems || serverResponse.drawings || serverResponse.images)) {
+                        await updateCachedNote(noteId, { data: serverResponse });
+                    } else {
+                        // It's a partial response (just the attachment object)
+                        // Fetch the full note to ensure cache integrity
+                        try {
+                            const fullNoteRes = await api.get(`/notes/${noteId}`);
+                            const fullNote = fullNoteRes.data.data || fullNoteRes.data;
+                            if (fullNote) await updateCachedNote(noteId, { data: fullNote });
+                        } catch (err) {
+                            console.warn(`⚠️ [Sync] Failed to re-fetch full note ${noteId} after partial response:`, err);
+                        }
+                    }
+                };
 
-                case 'DELETE':
-                    await api.delete(`/notes/${op.resourceId}`);
-                    success = true;
-                    break;
+                switch (op.type) {
+                    case 'CREATE': {
+                        const createRes = await api.post('/notes', {
+                            ...op.payload,
+                            client_id: op.resourceId
+                        });
+                        const serverNote = createRes.data.data || createRes.data;
+                        const oldId = op.resourceId;
+                        const newId = serverNote.id;
 
-                case 'PIN_NOTE':
-                    await api.post(`/notes/${op.resourceId}/pin`);
-                    success = true;
-                    break;
+                        console.log(`🆔 [Sync] Note created! Mapped ${oldId} -> ${newId}`);
 
-                case 'UNPIN_NOTE':
-                    await api.post(`/notes/${op.resourceId}/unpin`);
-                    success = true;
-                    break;
+                        // Backend ignores checklist_items on note create, so we must send them separately
+                        if (op.payload.checklist_items && op.payload.checklist_items.length > 0) {
+                            console.log(`📋 [Sync] Syncing ${op.payload.checklist_items.length} checklist items for new note ${newId}`);
+                            for (const item of op.payload.checklist_items) {
+                                try {
+                                    await api.post(`/notes/${newId}/checklist`, item);
+                                } catch (e) {
+                                    console.warn(`⚠️ [Sync] Failed to sync checklist item for note ${newId}:`, e);
+                                }
+                            }
+                            // Re-fetch full note to get all server-side IDs for checklist items
+                            const updatedNoteRes = await api.get(`/notes/${newId}`);
+                            const updatedNote = updatedNoteRes.data.data || updatedNoteRes.data;
+                            await addCachedNote({ id: newId, data: updatedNote, locallyModified: false });
+                        } else {
+                            await addCachedNote({ id: newId, data: serverNote, locallyModified: false });
+                        }
 
-                case 'ARCHIVE_NOTE':
-                    await api.post(`/notes/${op.resourceId}/archive`);
-                    success = true;
-                    break;
+                        await removeCachedNote(oldId);
 
-                case 'UNARCHIVE_NOTE':
-                    await api.post(`/notes/${op.resourceId}/unarchive`);
-                    success = true;
-                    break;
-
-                case 'UPLOAD_IMAGE':
-                    const formData = new FormData();
-                    formData.append('image', op.payload.imageFile);
-                    await api.post(`/notes/${op.resourceId}/images`, formData, {
-                        headers: { 'Content-Type': 'multipart/form-data' }
-                    });
-                    success = true;
-                    break;
-
-                case 'CREATE_AUDIO':
-                    try {
-                        const audioBlob = await fetch(op.payload.audioFile.uri).then(r => r.blob());
-                        const audioFormData = new FormData();
-                        audioFormData.append('audio', audioBlob, 'recording.wav');
-                        await api.post(`/notes/${op.resourceId}/audio`, audioFormData, {
-                            headers: { 'Content-Type': 'multipart/form-data' }
+                        // Propagate ID change to ALL other operations in the queue immediately
+                        currentQueue.forEach(otherOp => {
+                            if (otherOp.resourceId === oldId) otherOp.resourceId = newId;
+                            if (otherOp.payload?.noteId === oldId) otherOp.payload.noteId = newId;
                         });
                         success = true;
-                    } catch (e) {
-                        console.error('Failed to sync audio:', e);
-                        success = true;
+                        break;
                     }
-                    break;
 
-                case 'CREATE_DRAWING':
-                    await api.post(`/notes/${op.resourceId}/drawings`, {
-                        image_data: op.payload.drawing_uri
-                    });
-                    success = true;
-                    break;
+                    case 'UPDATE':
+                        await api.put(`/notes/${op.resourceId}`, op.payload);
+                        success = true;
+                        break;
 
-                default:
-                    console.warn(`⚠️ [Sync] Unknown operation type: ${op.type}`);
-                    success = true;
-            }
+                    case 'DELETE':
+                        await api.delete(`/notes/${op.resourceId}`);
+                        success = true;
+                        break;
 
-            if (success) {
-                completedIds.push(op.id!);
-            }
-        } catch (err: any) {
-            console.error(`❌ [Sync] Failed ${op.type} for ${op.resourceId}:`, err.message);
-            if (err.response?.status === 404 || err.response?.status === 422) {
-                completedIds.push(op.id!);
-            } else {
-                break;
+                    case 'PIN_NOTE':
+                        await api.put(`/notes/${op.resourceId}/pin`);
+                        success = true;
+                        break;
+
+                    case 'UNPIN_NOTE':
+                        await api.put(`/notes/${op.resourceId}/unpin`);
+                        success = true;
+                        break;
+
+                    case 'ARCHIVE_NOTE':
+                        await api.put(`/notes/${op.resourceId}/archive`);
+                        success = true;
+                        break;
+
+                    case 'UNARCHIVE_NOTE':
+                        await api.put(`/notes/${op.resourceId}/unarchive`);
+                        success = true;
+                        break;
+
+                    case 'UPLOAD_IMAGE': {
+                        const formData = new FormData();
+                        formData.append('image', op.payload.imageFile);
+                        const res = await api.post(`/notes/${op.resourceId}/images`, formData, {
+                            headers: { 'Content-Type': 'multipart/form-data' }
+                        });
+                        await safeUpdateNoteCache(op.resourceId, res.data.data || res.data);
+                        success = true;
+                        break;
+                    }
+
+                    case 'CREATE_AUDIO': {
+                        const audioUri = op.payload.audioFile.uri;
+                        const audioBlob = await fetch(audioUri).then(r => r.blob());
+                        const audioFormData = new FormData();
+                        audioFormData.append('audio', audioBlob, 'recording.wav');
+                        const res = await api.post(`/notes/${op.resourceId}/audio`, audioFormData, {
+                            headers: { 'Content-Type': 'multipart/form-data' }
+                        });
+                        await safeUpdateNoteCache(op.resourceId, res.data.data || res.data);
+                        success = true;
+                        break;
+                    }
+
+                    case 'CREATE_DRAWING': {
+                        const drawingUri = op.payload.drawing_uri;
+                        const drawingBlob = await fetch(drawingUri).then(r => r.blob());
+                        const drawingFormData = new FormData();
+                        drawingFormData.append('drawing', drawingBlob, 'drawing.png');
+                        const res = await api.post(`/notes/${op.resourceId}/drawings`, drawingFormData, {
+                            headers: { 'Content-Type': 'multipart/form-data' }
+                        });
+                        await safeUpdateNoteCache(op.resourceId, res.data.data || res.data);
+                        success = true;
+                        break;
+                    }
+
+                    case 'CREATE_REMINDER': {
+                        const res = await api.post(`/notes/${op.payload.noteId}/reminder`, {
+                            remind_at: op.payload.remind_at
+                        });
+                        const serverNote = res.data.data || res.data;
+                        // If it returns a note, update. Some backends return just the reminder.
+                        if (serverNote && serverNote.id) {
+                            await updateCachedNote(op.payload.noteId, { data: serverNote });
+                        }
+                        success = true;
+                        break;
+                    }
+
+                    case 'DELETE_REMINDER': {
+                        await api.delete(`/reminders/${op.resourceId}`);
+                        success = true;
+                        break;
+                    }
+
+                    case 'RESTORE_NOTE':
+                        await api.post(`/notes/${op.resourceId}/restore`);
+                        success = true;
+                        break;
+
+                    case 'ATTACH_LABEL':
+                        await api.post(`/notes/${op.payload.noteId}/labels`, { label_id: op.payload.labelId });
+                        success = true;
+                        break;
+
+                    case 'DETACH_LABEL':
+                        await api.delete(`/notes/${op.payload.noteId}/labels/${op.payload.labelId}`);
+                        success = true;
+                        break;
+
+                    case 'CREATE_CHECKLIST': {
+                        await api.post(`/notes/${op.payload.noteId}/checklist`, {
+                            text: op.payload.text,
+                            is_checked: op.payload.is_checked
+                        });
+                        // Backend likely returns the new checklist item.
+                        // However, we want the full updated note to keep IDs sync'd.
+                        // Since we know the backend NoteController methods return full notes now
+                        // (from my previous changes that stayed), we can try to find the note.
+                        const serverNoteRes = await api.get(`/notes/${op.payload.noteId}`);
+                        const serverNote = serverNoteRes.data.data || serverNoteRes.data;
+                        if (serverNote) await updateCachedNote(op.payload.noteId, { data: serverNote });
+                        success = true;
+                        break;
+                    }
+
+                    case 'UPDATE_CHECKLIST':
+                        await api.put(`/checklist/${op.resourceId}`, {
+                            ...op.payload,
+                            is_checked: op.payload.is_checked || op.payload.is_completed
+                        });
+                        success = true;
+                        break;
+
+                    case 'DELETE_CHECKLIST':
+                        await api.delete(`/checklist/${op.resourceId}`);
+                        success = true;
+                        break;
+
+                    default:
+                        console.warn(`⚠️ [Sync] Unknown operation type: ${op.type}`);
+                        success = true;
+                }
+
+                if (success) completedIds.add(op.id!);
+            } catch (err: any) {
+                const status = err.response?.status;
+                const isPermanentError = [404, 405, 409, 410, 422].includes(status);
+
+                if (isPermanentError) {
+                    console.warn(`⚠️ [Sync] Permanent rejection for ${op.type} (${status}). Clearing operation.`);
+                    completedIds.add(op.id!); // Mark as done to remove from queue
+                } else {
+                    console.error(`❌ [Sync] Retryable failure for ${op.type}:`, err.message);
+                    break; // Stop THIS stream on network/5xx errors, but others keep going
+                }
             }
         }
-    }
+    }));
 
-    if (completedIds.length > 0) {
-        const currentQueue = await getSyncQueue();
-        const updatedQueue = currentQueue.filter(op => !completedIds.includes(op.id!));
-        await setSyncQueue(updatedQueue);
-        console.log(`✅ [Sync] Completed ${completedIds.length} operations. ${updatedQueue.length} remaining.`);
+    if (completedIds.size > 0) {
+        const finalQueue = currentQueue.filter(op => !completedIds.has(op.id!));
+
+        // Final Cache Polish: mark notes as synced if no pending ops
+        for (const op of currentQueue) {
+            if (completedIds.has(op.id!) && op.resourceType === 'note') {
+                const hasMore = finalQueue.some(o => o.resourceId === op.resourceId);
+                if (!hasMore) {
+                    if (op.type === 'DELETE') {
+                        await removeCachedNote(op.resourceId);
+                    } else {
+                        await updateCachedNote(op.resourceId, { locallyModified: false });
+                    }
+                }
+            }
+        }
+
+        await setSyncQueue(finalQueue);
+        console.log(`✅ [Sync] Finished! Completed ${completedIds.size} operations. ${finalQueue.length} remaining.`);
     }
 
     isSyncing = false;
@@ -558,4 +873,4 @@ export const processSyncQueue = async () => {
 // Auto-sync interval
 setInterval(() => {
     if (isOnlineGlobal) processSyncQueue();
-}, 30000);
+}, 5000);
