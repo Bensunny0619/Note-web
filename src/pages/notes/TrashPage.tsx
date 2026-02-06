@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { getNotes, restoreNote, permanentlyDeleteNote } from '../../services/offlineApi';
+import { getDeletedNotes, restoreNote, permanentlyDeleteNote } from '../../services/offlineApi';
 import NoteCard from '../../components/NoteCard';
 import { Trash2, Loader2, RotateCcw, XCircle } from 'lucide-react';
 
@@ -32,8 +32,7 @@ const TrashPage: React.FC = () => {
     const fetchDeletedNotes = async () => {
         try {
             setLoading(true);
-            const data = await getNotes();
-            const deletedNotes = data.filter(note => note.is_deleted);
+            const deletedNotes = await getDeletedNotes();
             setNotes(deletedNotes.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()));
         } catch (err: any) {
             console.error(err);

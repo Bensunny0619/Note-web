@@ -74,24 +74,23 @@ const compressImage = (file: File, maxWidth = 1200, quality = 0.7): Promise<File
 };
 
 // Notes API
-export const getNotes = async (searchQuery?: string, labelId?: number): Promise<any[]> => {
+export const getNotes = async (searchQuery?: string, labelId?: number, includeArchived?: boolean, includeDeleted?: boolean): Promise<any[]> => {
     if (isOnlineGlobal) {
         try {
             const params: any = {};
             if (searchQuery) params.search = searchQuery;
             if (labelId) params.label_id = labelId;
+            if (includeArchived) params.include_archived = 'true';
+            if (includeDeleted) params.include_deleted = 'true';
 
             const response = await api.get('/notes', { params });
             const notes = response.data.data || response.data;
 
-            console.log(`🌐 Fetched ${notes.length} notes from server`);
+            console.log(`🌐 Fetched ${notes.length} notes from server (archived: ${includeArchived}, deleted: ${includeDeleted})`);
 
             const currentCached = await getCachedNotes();
             const syncQueue = await getSyncQueue();
             const pendingResourceIds = new Set(syncQueue.map(op => op.resourceId));
-
-            // Treat locallyModified OR notes with pending sync ops as "localOnly" for merge logic
-            const localOnlyNotes = currentCached.filter(n => n.locallyModified || pendingResourceIds.has(n.id));
 
             const serverNotesMapped: CachedNote[] = notes.map((note: any) => ({
                 id: note.id,
@@ -106,45 +105,62 @@ export const getNotes = async (searchQuery?: string, labelId?: number): Promise<
             // 1. Start with server notes
             serverNotesMapped.forEach(sn => mergedMap.set(sn.id, sn));
 
-            // 2. Merge local modifications
-            localOnlyNotes.forEach(localNote => {
-                let serverMatch = mergedMap.get(localNote.id);
+            // 2. Merge local modifications and preserve notes not requested in this fetch
+            // (e.g., if we didn't ask for archived notes, don't delete them from cache)
+            currentCached.forEach(localNote => {
+                const isRequestedInFetch = (includeArchived && localNote.data.is_archived) ||
+                    (includeDeleted && localNote.data.is_deleted) ||
+                    (!localNote.data.is_archived && !localNote.data.is_deleted);
 
-                if (!serverMatch) {
-                    for (const [, sn] of mergedMap.entries()) {
-                        if (sn.data.title === localNote.data.title &&
-                            sn.data.content === localNote.data.content) {
-                            serverMatch = sn;
-                            break;
+                let serverMatch = mergedMap.get(localNote.id);
+                const isPending = pendingResourceIds.has(localNote.id);
+
+                // Grace period: if synced in last 60s, don't purge even if missing from server
+                const syncGracePeriod = 60 * 1000;
+                const isRecentlySynced = localNote.lastSyncedAt &&
+                    (Date.now() - new Date(localNote.lastSyncedAt).getTime() < syncGracePeriod);
+
+                // If it's locally modified OR we didn't specifically ask for this type of note, 
+                // OR it was just synced (grace period), keep it
+                if (localNote.locallyModified || isPending || !isRequestedInFetch || isRecentlySynced) {
+                    if (!serverMatch) {
+                        for (const [, sn] of mergedMap.entries()) {
+                            if (sn.data.title === localNote.data.title &&
+                                sn.data.content === localNote.data.content) {
+                                serverMatch = sn;
+                                break;
+                            }
                         }
                     }
-                }
 
-                if (serverMatch) {
-                    // Enrich server note with local modifications
-                    const enrichedData = {
-                        ...serverMatch.data,
-                        ...localNote.data,
-                        updated_at: localNote.data.updated_at || serverMatch.data.updated_at
-                    };
+                    if (serverMatch) {
+                        // Enrich server note with local modifications
+                        const enrichedData = {
+                            ...serverMatch.data,
+                            ...localNote.data,
+                            updated_at: localNote.data.updated_at || serverMatch.data.updated_at
+                        };
 
-                    if (localNote.data.checklist_items?.length > 0) enrichedData.checklist_items = localNote.data.checklist_items;
-                    if (localNote.data.drawings?.length > 0) enrichedData.drawings = localNote.data.drawings;
-                    if (localNote.data.images?.length > 0) enrichedData.images = localNote.data.images;
+                        if (localNote.data.checklist_items?.length > 0) enrichedData.checklist_items = localNote.data.checklist_items;
+                        if (localNote.data.drawings?.length > 0) enrichedData.drawings = localNote.data.drawings;
+                        if (localNote.data.images?.length > 0) enrichedData.images = localNote.data.images;
 
-                    const localAudio = localNote.data.audio_recordings || localNote.data.audioRecordings || [];
-                    if (localAudio.length > 0) enrichedData.audio_recordings = localAudio;
+                        const localAudio = localNote.data.audio_recordings || localNote.data.audioRecordings || [];
+                        if (localAudio.length > 0) enrichedData.audio_recordings = localAudio;
 
-                    if (localNote.data.reminder) enrichedData.reminder = localNote.data.reminder;
-                    if (localNote.data.reminder_at) enrichedData.reminder_at = localNote.data.reminder_at;
+                        if (localNote.data.reminder) enrichedData.reminder = localNote.data.reminder;
+                        if (localNote.data.reminder_at) enrichedData.reminder_at = localNote.data.reminder_at;
 
-                    mergedMap.set(serverMatch.id, {
-                        ...serverMatch,
-                        data: enrichedData,
-                        locallyModified: localNote.locallyModified || pendingResourceIds.has(localNote.id)
-                    });
-                } else {
-                    mergedMap.set(localNote.id, localNote);
+                        mergedMap.set(serverMatch.id, {
+                            ...serverMatch,
+                            data: enrichedData,
+                            locallyModified: localNote.locallyModified || isPending,
+                            lastSyncedAt: serverMatch.lastSyncedAt || localNote.lastSyncedAt
+                        });
+                    } else {
+                        // If it's not on server yet (or missing), but we want to keep it
+                        mergedMap.set(localNote.id, localNote);
+                    }
                 }
             });
 
@@ -170,6 +186,26 @@ export const getNotes = async (searchQuery?: string, labelId?: number): Promise<
 const getCachedNotesData = async (): Promise<any[]> => {
     const cached = await getCachedNotes();
     return cached.map(c => c.data);
+};
+
+// Helper functions to get archived and deleted notes from cache
+// These bypass server sync to preserve archived/deleted notes
+export const getArchivedNotes = async (): Promise<any[]> => {
+    const cached = await getCachedNotes();
+    const archivedNotes = cached
+        .map(c => c.data)
+        .filter(note => note.is_archived && !note.is_deleted);
+    console.log('📦 [Cache] Found', archivedNotes.length, 'archived notes in cache');
+    return archivedNotes;
+};
+
+export const getDeletedNotes = async (): Promise<any[]> => {
+    const cached = await getCachedNotes();
+    const deletedNotes = cached
+        .map(c => c.data)
+        .filter(note => note.is_deleted);
+    console.log('🗑️ [Cache] Found', deletedNotes.length, 'deleted notes in cache');
+    return deletedNotes;
 };
 
 export const getNote = async (id: string | number): Promise<any | null> => {
@@ -453,7 +489,7 @@ export const restoreNote = async (id: string | number): Promise<void> => {
     const cached = await getCachedNoteById(id);
     if (cached) {
         await updateCachedNote(id, {
-            data: { ...cached.data, is_deleted: false },
+            data: { ...cached.data, is_deleted: false, is_archived: false },
             locallyModified: true,
         });
         console.log('♻️ Note restored locally:', id);
@@ -713,7 +749,8 @@ export const processSyncQueue = async () => {
                     }
 
                     case 'UPDATE': {
-                        const updateRes = await api.put(`/notes/${op.resourceId}`, op.payload);
+                        await api.put(`/notes/${op.resourceId}`, op.payload);
+                        console.log(`📥 [Sync] Note ${op.resourceId} updated successfully.`);
 
                         // Sync reminder if it was part of the update
                         if (op.payload.reminder_at) {
@@ -738,22 +775,30 @@ export const processSyncQueue = async () => {
                         break;
 
                     case 'PIN_NOTE':
+                        console.log(`📤 [Sync] Pinning note ${op.resourceId}...`);
                         await api.put(`/notes/${op.resourceId}/pin`);
+                        console.log(`📥 [Sync] Note ${op.resourceId} pinned successfully.`);
                         success = true;
                         break;
 
                     case 'UNPIN_NOTE':
+                        console.log(`📤 [Sync] Unpinning note ${op.resourceId}...`);
                         await api.put(`/notes/${op.resourceId}/unpin`);
+                        console.log(`📥 [Sync] Note ${op.resourceId} unpinned successfully.`);
                         success = true;
                         break;
 
                     case 'ARCHIVE_NOTE':
+                        console.log(`📤 [Sync] Archiving note ${op.resourceId}...`);
                         await api.put(`/notes/${op.resourceId}/archive`);
+                        console.log(`📥 [Sync] Note ${op.resourceId} archived successfully.`);
                         success = true;
                         break;
 
                     case 'UNARCHIVE_NOTE':
+                        console.log(`📤 [Sync] Unarchiving note ${op.resourceId}...`);
                         await api.put(`/notes/${op.resourceId}/unarchive`);
+                        console.log(`📥 [Sync] Note ${op.resourceId} unarchived successfully.`);
                         success = true;
                         break;
 
@@ -814,7 +859,19 @@ export const processSyncQueue = async () => {
                     }
 
                     case 'RESTORE_NOTE':
+                        console.log(`📤 [Sync] Restoring note ${op.resourceId}...`);
                         await api.post(`/notes/${op.resourceId}/restore`);
+                        console.log(`📥 [Sync] Note ${op.resourceId} restored successfully.`);
+
+                        // Re-fetch to ensure cache is 100% in sync with server status
+                        try {
+                            const refreshed = await api.get(`/notes/${op.resourceId}`);
+                            const serverNote = refreshed.data.data || refreshed.data;
+                            if (serverNote) await updateCachedNote(op.resourceId, { data: serverNote });
+                        } catch (e: any) {
+                            console.warn(`⚠️ [Sync] Restore successful but failed to refresh note ${op.resourceId}:`, e.message);
+                        }
+
                         success = true;
                         break;
 
@@ -886,11 +943,10 @@ export const processSyncQueue = async () => {
             if (completedIds.has(op.id!) && op.resourceType === 'note') {
                 const hasMore = finalQueue.some(o => o.resourceId === op.resourceId);
                 if (!hasMore) {
-                    if (op.type === 'DELETE') {
-                        await removeCachedNote(op.resourceId);
-                    } else {
-                        await updateCachedNote(op.resourceId, { locallyModified: false });
-                    }
+                    await updateCachedNote(op.resourceId, {
+                        locallyModified: false,
+                        lastSyncedAt: new Date().toISOString()
+                    });
                 }
             }
         }

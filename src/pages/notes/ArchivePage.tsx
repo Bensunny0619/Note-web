@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { getNotes, deleteNote, unarchiveNote } from '../../services/offlineApi';
+import { getArchivedNotes, deleteNote, unarchiveNote } from '../../services/offlineApi';
 import NoteCard from '../../components/NoteCard';
 import { Archive, Loader2, RefreshCw } from 'lucide-react';
 
@@ -31,8 +31,7 @@ const ArchivePage: React.FC = () => {
     const fetchArchivedNotes = async () => {
         try {
             setLoading(true);
-            const data = await getNotes();
-            const archivedNotes = data.filter(note => note.is_archived && !note.is_deleted);
+            const archivedNotes = await getArchivedNotes();
             setNotes(archivedNotes.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()));
         } catch (err: any) {
             console.error(err);
