@@ -46,11 +46,13 @@ const LabelsPage: React.FC = () => {
         <div className="min-h-screen bg-transparent">
             <div className="max-w-3xl mx-auto px-6 py-12">
                 <div className="flex items-center gap-4 mb-10">
-                    <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center text-primary shadow-sm">
-                        <Tag size={24} />
+                    <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center text-primary shadow-sm rotate-3">
+                        <Tag size={24} fill="currentColor" fillOpacity={0.2} />
                     </div>
                     <div>
-                        <h1 className="text-3xl font-extrabold text-gray-900 dark:text-white tracking-tight">Labels</h1>
+                        <h1 className="text-3xl font-black text-gray-900 dark:text-white tracking-tight">
+                            Homa<span className="text-primary">.</span> Labels
+                        </h1>
                         <p className="text-sm text-gray-500 font-medium">Organize your thoughts with labels</p>
                     </div>
                 </div>
