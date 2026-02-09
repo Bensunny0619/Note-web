@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { StickyNote } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import api from '../../services/api';
+import API_CONFIG from '../../services/config';
 
 export default function Login() {
     const [email, setEmail] = useState('');
@@ -17,7 +18,7 @@ export default function Login() {
         setLoading(true);
 
         console.log('🔐 Attempting login with:', { email, password: '***' });
-        console.log('📡 API Base URL:', 'http://192.168.0.2:8000/api');
+        console.log('📡 API Base URL:', API_CONFIG.BASE_URL);
 
         try {
             const response = await api.post('/auth/login', { email, password });

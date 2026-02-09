@@ -123,7 +123,7 @@ export default function EditNote() {
                         is_checked: item.is_checked
                     })),
                 label_ids: selectedLabels,
-                reminder_at: reminderDate || null,
+                reminder_at: reminderDate ? new Date(reminderDate).toISOString() : null,
                 audio_uri: audioUri,
                 drawing_uri: drawingUri,
             });
@@ -395,7 +395,7 @@ export default function EditNote() {
                             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-orange-100 text-orange-700 text-xs font-medium">
                                 <Bell size={12} />
                                 {new Date(reminderDate).toLocaleString()}
-                                <button onClick={() => setReminderDate('')} className="hover:text-orange-900 ml-1">
+                                <button onClick={() => setReminderDate('')} className="p-1 hover:bg-orange-200 rounded-full ml-1">
                                     <XIcon size={12} />
                                 </button>
                             </div>

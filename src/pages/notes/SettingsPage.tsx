@@ -122,8 +122,8 @@ const SettingsPage: React.FC = () => {
                                         key={color.value}
                                         onClick={() => setDefaultNoteColor(color.value)}
                                         className={`${color.color} p-4 rounded-lg border-2 transition-all ${defaultNoteColor === color.value
-                                                ? 'border-primary ring-2 ring-primary/20'
-                                                : 'border-gray-200 dark:border-gray-600 hover:border-primary/50'
+                                            ? 'border-primary ring-2 ring-primary/20'
+                                            : 'border-gray-200 dark:border-gray-600 hover:border-primary/50'
                                             }`}
                                     >
                                         <span className="text-sm font-medium text-gray-700 dark:text-gray-300">

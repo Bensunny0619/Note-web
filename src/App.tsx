@@ -66,6 +66,8 @@ function AppRoutes() {
     );
 }
 
+import ReminderNotification from './components/ReminderNotification';
+
 function App() {
     return (
         <BrowserRouter>
@@ -74,6 +76,7 @@ function App() {
                     <NetworkProvider>
                         <AudioProvider>
                             <LabelProvider>
+                                <ReminderNotification />
                                 <AppRoutes />
                             </LabelProvider>
                         </AudioProvider>
