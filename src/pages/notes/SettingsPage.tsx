@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
+import { Link } from 'react-router-dom';
 import { useTheme } from '../../contexts/ThemeContext';
 import { User, Moon, Sun, Palette, Bell, LogOut, Info, Shield, FileText } from 'lucide-react';
 
@@ -163,20 +164,20 @@ const SettingsPage: React.FC = () => {
                             <p className="text-gray-900 dark:text-white font-medium">1.0.0</p>
                         </div>
                         <div className="pt-4 border-t border-gray-200 dark:border-gray-700 space-y-3">
-                            <a
-                                href="#"
+                            <Link
+                                to="/privacy"
                                 className="flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-primary transition-colors"
                             >
                                 <Shield className="w-4 h-4" />
                                 <span>Privacy Policy</span>
-                            </a>
-                            <a
-                                href="#"
+                            </Link>
+                            <Link
+                                to="/terms"
                                 className="flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-primary transition-colors"
                             >
                                 <FileText className="w-4 h-4" />
                                 <span>Terms of Service</span>
-                            </a>
+                            </Link>
                         </div>
                     </div>
                 </div>

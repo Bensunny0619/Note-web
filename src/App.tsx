@@ -14,6 +14,8 @@ import TrashPage from './pages/notes/TrashPage';
 import LabelsPage from './pages/notes/LabelsPage';
 import RemindersPage from './pages/notes/RemindersPage';
 import SettingsPage from './pages/notes/SettingsPage';
+import PrivacyPolicy from './pages/legal/PrivacyPolicy';
+import TermsOfService from './pages/legal/TermsOfService';
 import './index.css';
 
 // Protected Route wrapper
@@ -62,6 +64,8 @@ function AppRoutes() {
             <Route path="/labels" element={<ProtectedRoute><Layout><LabelsPage /></Layout></ProtectedRoute>} />
             <Route path="/reminders" element={<ProtectedRoute><Layout><RemindersPage /></Layout></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute><Layout><SettingsPage /></Layout></ProtectedRoute>} />
+            <Route path="/privacy" element={<ProtectedRoute><Layout><PrivacyPolicy /></Layout></ProtectedRoute>} />
+            <Route path="/terms" element={<ProtectedRoute><Layout><TermsOfService /></Layout></ProtectedRoute>} />
         </Routes>
     );
 }
